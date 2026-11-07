@@ -21,20 +21,20 @@ export default function LogsPage() {
         : rows.length === 0 ? <EmptyState title="No finished matches" description={`There are no final ${age} results for ${season} yet.`} />
         : (
           <div className="overflow-x-auto rounded-xl border border-line bg-white">
-            <table className="w-full min-w-[420px] text-sm">
+            <table className="w-full table-fixed text-sm">
               <thead className="border-b border-line bg-chalk text-xs uppercase text-ink-soft">
                 <tr>
-                  <th className="px-3 py-3 text-left">#</th><th className="px-3 py-3 text-left">Team</th>
-                  {['P', 'W', 'D', 'L', 'PF', 'PA', 'PD', 'Pts'].map((h) => <th key={h} scope="col" className="px-2 py-3 text-right">{h}</th>)}
+                  <th className="w-7 px-1.5 py-3 text-left sm:w-10 sm:px-3">#</th><th className="px-1.5 py-3 text-left sm:px-3">Team</th>
+                  {['P', 'W', 'D', 'L', 'PF', 'PA', 'PD', 'Pts'].map((h) => <th key={h} scope="col" className="w-8 px-0.5 py-3 text-right last:pr-2 sm:w-12 sm:px-2">{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={r.teamId} className="border-b border-line last:border-0">
-                    <td className="num px-3 py-3 text-base">{i + 1}</td>
-                    <td className="px-3 py-3 font-semibold">{r.name}</td>
-                    {[r.played, r.won, r.drawn, r.lost, r.pf, r.pa, r.pd].map((v, j) => <td key={j} className="num px-2 py-3 text-right text-base">{v}</td>)}
-                    <td className="num px-2 py-3 text-right text-xl text-pitch">{r.points}</td>
+                    <td className="num px-1.5 py-3 text-base sm:px-3">{i + 1}</td>
+                    <td className="break-words px-1.5 py-3 font-semibold sm:px-3">{r.name}</td>
+                    {[r.played, r.won, r.drawn, r.lost, r.pf, r.pa, r.pd].map((v, j) => <td key={j} className="num px-0.5 py-3 text-right text-base sm:px-2">{v}</td>)}
+                    <td className="num px-0.5 py-3 pr-2 text-right text-xl text-pitch sm:px-2">{r.points}</td>
                   </tr>
                 ))}
               </tbody>

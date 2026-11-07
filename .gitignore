@@ -28,3 +28,8 @@ dist-ssr
 .firebase/
 *-debug.log
 .vercel
+
+# e2e
+tests/e2e/screenshots/
+test-results/
+playwright-report/

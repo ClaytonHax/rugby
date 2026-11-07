@@ -15,7 +15,7 @@ export default function MatchPublicPage() {
   if (match.loading) return <SkeletonList rows={2} />;
   const m = match.data;
   if (!m) return <EmptyState title="Match not found" description={match.error ?? 'This match does not exist.'} />;
-  const list = [...events.data].sort((a, b) => a.minute - b.minute);
+  const list = [...events.data].sort((a, b) => a.minute - b.minute || (a.createdAt?.toMillis() ?? Infinity) - (b.createdAt?.toMillis() ?? Infinity));
   const showScore = m.status === 'live' || m.status === 'final';
   return (
     <div>

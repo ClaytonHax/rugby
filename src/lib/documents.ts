@@ -5,7 +5,7 @@
 // Document bytes are never logged or placed anywhere public.
 import {
   arrayRemove, arrayUnion, Bytes, collection, deleteDoc, doc, getDoc, query, serverTimestamp,
-  setDoc, updateDoc, where,
+  getDocs, setDoc, updateDoc, where,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { useCollection, type CollectionState } from './data';
@@ -157,8 +157,16 @@ export async function uploadDocument(
 
   try {
     // 1. Clear what was there, and stop counting the old file as uploaded.
-    const old = await getDoc(ref);
-    if (old.exists()) {
+    // A query (filtered by school, as the rules require) rather than getDoc: the rules deny reading a document that does not exist yet.
+    const found = await getDocs(query(
+      collection(db, 'documents'),
+      where('schoolId', '==', owner.schoolId),
+      where('ownerType', '==', owner.ownerType),
+      where('ownerId', '==', owner.ownerId),
+      where('type', '==', type),
+    ));
+    const old = found.docs.find((d) => d.id === id);
+    if (old) {
       if (personColl) await withRetry(() => updateDoc(doc(db, personColl, owner.ownerId), { docTypes: arrayRemove(type) }));
       await deleteChunks(id, (old.data() as StoredDocument).chunkCount ?? 0);
     }

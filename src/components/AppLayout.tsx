@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { DEFAULT_SETTINGS } from '../lib/eligibility';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Building2, CalendarDays, ClipboardCheck, FileSearch, History, LayoutDashboard, LogOut, MoreHorizontal, Settings,
@@ -33,6 +36,18 @@ export function AppLayout() {
   const { appUser, signOut } = useAuth();
   const navigate = useNavigate();
   const [more, setMore] = useState(false);
+  const isUnionAdmin = appUser?.role === 'union_admin';
+  // The rules read settings/competition for every roster and team sheet write, and deny them when it is missing.
+  // On a fresh database the union administrator's first visit creates it with the defaults.
+  useEffect(() => {
+    if (!isUnionAdmin) return;
+    void (async () => {
+      try {
+        const ref = doc(db, 'settings', 'competition');
+        if (!(await getDoc(ref)).exists()) await setDoc(ref, DEFAULT_SETTINGS);
+      } catch { /* the Settings page lets the administrator retry */ }
+    })();
+  }, [isUnionAdmin]);
   if (!appUser) return null;
   const items = NAV_ITEMS.filter((n) => !n.roles || n.roles.includes(appUser.role));
   const tabs = items.length > 5 ? items.slice(0, 4) : items;

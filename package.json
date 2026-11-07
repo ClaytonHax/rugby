@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-tryline \"vitest run --config tests/vitest.config.ts\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-tryline \"vitest run --config tests/vitest.config.ts\"",
+    "test:e2e": "firebase emulators:exec --only firestore,auth --project demo-tryline \"playwright test\""
   },
   "dependencies": {
     "firebase": "^13.2.0",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",
+    "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",

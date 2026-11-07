@@ -107,7 +107,7 @@ export default function TeamDetailPage() {
                   {isOverAge(p.dob, today, settings) && <Badge tone="gold">Over-age</Badge>}
                   {p.status !== 'verified' && <StatusBadge status={p.status} />}
                   {canEdit && (
-                    <Button size="sm" variant="ghost" aria-label={`Remove ${p.firstName} ${p.lastName}`} loading={busy === p.id}
+                    <Button size="sm" variant="ghost" aria-label={`Remove ${p.firstName} ${p.lastName}`} loading={busy === p.id} disabled={busy !== null}
                       onClick={() => run(p.id, () => removePlayerFromRoster(t.id, p.id))}><UserMinus className="size-4" /></Button>
                   )}
                 </div>
@@ -133,7 +133,7 @@ export default function TeamDetailPage() {
                   <p className="text-xs text-ink-soft">{STAFF_ROLE_LABELS[s.staffRole]}</p>
                 </div>
                 {canEdit && (
-                  <Button size="sm" variant="ghost" aria-label={`Remove ${s.firstName} ${s.lastName}`} loading={busy === s.id}
+                  <Button size="sm" variant="ghost" aria-label={`Remove ${s.firstName} ${s.lastName}`} loading={busy === s.id} disabled={busy !== null}
                     onClick={() => run(s.id, () => removeStaff(t.id, s.id))}><UserMinus className="size-4" /></Button>
                 )}
               </li>
@@ -158,7 +158,7 @@ export default function TeamDetailPage() {
                   </div>
                 </div>
                 {ok ? (
-                  <Button size="sm" loading={busy === p.id}
+                  <Button size="sm" loading={busy === p.id} disabled={busy !== null}
                     onClick={() => run(p.id, () => (mode === 'player' ? addPlayerToRoster(t.id, p.id, settings) : addStaff(t.id, p.id)))}>Add</Button>
                 ) : (
                   <Link className="text-sm font-semibold text-pitch underline" to={`/app/${mode === 'player' ? 'players' : 'staff'}/${p.id}`}>Finish registration</Link>
