@@ -20,7 +20,7 @@ export default function SignupPage() {
     setBusy(true);
     try {
       await signUp(email, password, name);
-      navigate('/verify-email', { replace: true });
+      navigate('/app', { replace: true });
     } catch (err) {
       setError(friendlyAuthError(err));
     } finally {

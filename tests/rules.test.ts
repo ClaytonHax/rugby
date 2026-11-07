@@ -413,9 +413,8 @@ describe('school admin and invites', () => {
     await assertFails(getDocs(collection(as('saA'), 'invites')));
     await assertFails(getDocs(query(collection(as('saA'), 'invites'), where('schoolId', '==', 'B'))));
   });
-  it('deletes: invitee with verified email, school admin, not others', async () => {
+  it('deletes: invitee, school admin, not others', async () => {
     await assertFails(deleteDoc(doc(as('thief'), 'invites/newcoach@x.test')));
-    await assertFails(deleteDoc(doc(as('newcoach', { email_verified: false }), 'invites/newcoach@x.test')));
     await assertFails(deleteDoc(doc(as('saB'), 'invites/newcoach@x.test')));
     await assertSucceeds(deleteDoc(doc(as('newcoach'), 'invites/newcoach@x.test')));
     await assertSucceeds(deleteDoc(doc(as('saB'), 'invites/bcoach@x.test')));
@@ -442,9 +441,9 @@ describe('users: onboarding and privilege escalation', () => {
     await assertFails(setDoc(doc(db, 'users/newcoach'), claim({ schoolId: null })));
     await assertFails(setDoc(doc(db, 'users/newcoach'), claim({ active: false })));
   });
-  it('cannot claim with an unverified email', async () => {
-    await assertFails(setDoc(doc(as('newcoach', { email_verified: false }), 'users/newcoach'), claim()));
-    await assertFails(setDoc(doc(as('newcoach', { email_verified: undefined }), 'users/newcoach'), claim()));
+  it('can claim without a verified email, but only for the signed-in address', async () => {
+    await assertFails(setDoc(doc(as('thief', { email_verified: false }), 'users/thief'), claim()));
+    await assertSucceeds(setDoc(doc(as('newcoach', { email_verified: false }), 'users/newcoach'), claim()));
   });
   it('cannot claim without an invite', async () => {
     await assertFails(setDoc(doc(as('noinvite'), 'users/noinvite'), claim({ email: 'noinvite@x.test' })));

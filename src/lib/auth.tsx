@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  createUserWithEmailAndPassword, onAuthStateChanged, sendEmailVerification, sendPasswordResetEmail,
+  createUserWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail,
   signInWithEmailAndPassword, signOut as fbSignOut, updateProfile, type User,
 } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
@@ -9,7 +9,7 @@ import type { AppUser, Invite } from './types';
 
 interface AuthContextValue {
   firebaseUser: User | null;
-  /** null when signed out, unverified, or verified without an invite. */
+  /** null when signed out, or signed in without an invite. */
   appUser: AppUser | null;
   loading: boolean;
   /** Message to show on the login screen (e.g. deactivated account). */
@@ -18,9 +18,8 @@ interface AuthContextValue {
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
-  /** Reload the Firebase user, refresh the token and re-run the invite claim. Resolves true when a profile exists. */
+  /** Reload the Firebase user and re-run the invite claim. Resolves true when a profile exists. */
   refreshClaim: () => Promise<boolean>;
-  resendVerification: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -51,10 +50,8 @@ async function loadAppUser(user: User): Promise<AppUser | null> {
   const ref = doc(db, 'users', user.uid);
   const snap = await getDoc(ref);
   if (snap.exists()) return { ...(snap.data() as AppUser), uid: user.uid };
-  if (!user.emailVerified || !user.email) return null;
+  if (!user.email) return null;
 
-  // Claim the invite with a fresh token so email_verified is true in the rules.
-  await user.getIdToken(true);
   const email = user.email.toLowerCase();
   const inviteRef = doc(db, 'invites', email);
   const inviteSnap = await getDoc(inviteRef);
@@ -127,14 +124,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const cred = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
       await updateProfile(cred.user, { displayName: displayName.trim() });
-      await sendEmailVerification(cred.user);
       setFirebaseUser(cred.user);
-      setAppUser(null);
+      await resolve(cred.user);
     } finally {
       signingUp.current = false;
       setLoading(false);
     }
-  }, []);
+  }, [resolve]);
 
   const signOut = useCallback(async () => {
     await fbSignOut(auth);
@@ -148,19 +144,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const user = auth.currentUser;
     if (!user) return false;
     await user.reload();
-    if (user.emailVerified) await user.getIdToken(true);
     setFirebaseUser(auth.currentUser);
     const profile = await resolve(auth.currentUser);
     return profile !== null;
   }, [resolve]);
 
-  const resendVerification = useCallback(async () => {
-    if (auth.currentUser) await sendEmailVerification(auth.currentUser);
-  }, []);
-
   const value = useMemo<AuthContextValue>(
-    () => ({ firebaseUser, appUser, loading, notice, signIn, signUp, signOut, resetPassword, refreshClaim, resendVerification }),
-    [firebaseUser, appUser, loading, notice, signIn, signUp, signOut, resetPassword, refreshClaim, resendVerification],
+    () => ({ firebaseUser, appUser, loading, notice, signIn, signUp, signOut, resetPassword, refreshClaim }),
+    [firebaseUser, appUser, loading, notice, signIn, signUp, signOut, resetPassword, refreshClaim],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

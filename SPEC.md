@@ -21,8 +21,8 @@ in your final report. Your queries must satisfy the rules: school-level users MU
 - Public (no login): fixtures, results, logs, school directory, match pages. No personal data except initial + surname on scoring events.
 
 ## Onboarding (no public self-registration of roles)
-Admin creates `invites/{email}`. Invitee signs up with email+password, verifies email, and the app then claims the
-invite in one batch: create `users/{uid}` copying role + schoolId, delete the invite. A verified user with no invite sees a
+Admin creates `invites/{email}`. Invitee signs up with email+password (email ownership is not verified for now), and the app then claims the
+invite in one batch: create `users/{uid}` copying role + schoolId, delete the invite. A signed-in user with no invite sees a
 "no access yet" screen. Inactive users are signed out with a message.
 
 ## Required behaviour

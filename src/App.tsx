@@ -33,7 +33,6 @@ const SettingsPage = L(() => import('./pages/admin/SettingsPage'));
 const AccountPage = L(() => import('./pages/auth/AccountPage'));
 const LoginPage = L(() => import('./pages/auth/LoginPage'));
 const SignupPage = L(() => import('./pages/auth/SignupPage'));
-const VerifyEmailPage = L(() => import('./pages/auth/VerifyEmailPage'));
 const ResetPasswordPage = L(() => import('./pages/auth/ResetPasswordPage'));
 const NoAccessPage = L(() => import('./pages/auth/NoAccessPage'));
 const HomePage = L(() => import('./pages/public/HomePage'));
@@ -70,7 +69,6 @@ export default function App() {
 
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
-              <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/no-access" element={<NoAccessPage />} />
 

@@ -13,7 +13,6 @@ export default function NoAccessPage() {
   if (loading) return null;
   if (!firebaseUser) return <Navigate to="/login" replace />;
   if (appUser) return <Navigate to="/app" replace />;
-  if (!firebaseUser.emailVerified) return <Navigate to="/verify-email" replace />;
 
   const check = async () => {
     setBusy(true);
@@ -29,7 +28,7 @@ export default function NoAccessPage() {
   };
 
   return (
-    <AuthShell title="No access yet" subtitle={`${firebaseUser.email} is verified, but no administrator has invited this address. Ask your school or union administrator to invite you, then check again.`}>
+    <AuthShell title="No access yet" subtitle={`No administrator has invited ${firebaseUser.email}. Ask your school or union administrator to invite you, then check again.`}>
       {msg && <p role="status" className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{msg}</p>}
       <div className="flex flex-col gap-3">
         <Button onClick={check} loading={busy}>Check again</Button>

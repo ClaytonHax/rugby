@@ -55,9 +55,9 @@ service cloud.firestore {
     match /users/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
       allow read: if isUnion() || (hasRole(['school_admin']) && resource.data.schoolId == me().schoolId);
-      // First sign-in: a verified email claims the invite waiting for that address.
+      // First sign-in claims the invite waiting for that address. Email ownership
+      // is not verified: whoever signs up first with an invited address gets the role.
       allow create: if signedIn() && request.auth.uid == uid
-        && request.auth.token.email_verified == true
         && request.resource.data.email == request.auth.token.email.lower()
         && request.resource.data.active == true
         && exists(docPath('invites/' + request.auth.token.email.lower()))
@@ -77,7 +77,7 @@ service cloud.firestore {
         || (isSchoolAdmin(request.resource.data.schoolId)
             && request.resource.data.role in ['coach', 'manager', 'scorer']);
       allow delete: if isUnionAdmin() || isSchoolAdmin(resource.data.schoolId)
-        || (signedIn() && request.auth.token.email_verified == true && request.auth.token.email.lower() == email);
+        || (signedIn() && request.auth.token.email.lower() == email);
     }
 
     match /auditLogs/{id} {
