@@ -127,6 +127,12 @@ test('delete actions: permissions, dependency blocks and real data removal', asy
   await expect(d.getByRole('button', { name: 'Delete team' })).toHaveCount(0);
   await d.getByRole('button', { name: 'OK' }).click();
   expect(await readDoc('teams/tA')).not.toBeNull();
+  // Escape on the blocked dialog hands focus back to the button that opened it
+  await hp.getByRole('button', { name: 'Delete team' }).focus();
+  await hp.keyboard.press('Enter');
+  await openDialog(hp, 'This team is used in matches');
+  await hp.keyboard.press('Escape');
+  await expect(hp.getByRole('button', { name: 'Delete team' })).toBeFocused();
 
   await hp.goto('/app/matches/m2/sheet/tA');
   await hp.getByRole('button', { name: 'Delete sheet' }).click();

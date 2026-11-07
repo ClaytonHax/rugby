@@ -82,6 +82,7 @@ export default function TeamDetailPage() {
   const canDelete = appUser?.role === 'union_admin' || appUser?.role === 'registrar' || (appUser?.role === 'school_admin' && appUser.schoolId === t.schoolId);
 
   async function startDelete() {
+    if (del?.checking) return; // stays focusable while checking, so the dialog can return focus here
     setDel({ checking: true, matches: [] });
     try {
       setDel({ checking: false, matches: await matchesUsingTeam(t.id) });
@@ -108,7 +109,7 @@ export default function TeamDetailPage() {
         actions={<>
           <Button variant="secondary" icon={<Download className="size-4" />} disabled={inSquad.length === 0}
             onClick={() => downloadText(`${t.name.replace(/[^a-z0-9]+/gi, '-')}-squad.csv`, squadCsv(t, inSquad, settings))}>Export squad CSV</Button>
-          {canDelete && <Button variant="secondary" icon={<Trash2 className="size-4 text-danger" />} loading={del?.checking} onClick={() => void startDelete()}>Delete team</Button>}
+          {canDelete && <Button variant="secondary" icon={<Trash2 className="size-4 text-danger" />} aria-busy={del?.checking} onClick={() => void startDelete()}>Delete team</Button>}
         </>} />
 
       <Card className={`mb-5 ${over ? 'border-danger bg-red-50' : ''}`}>

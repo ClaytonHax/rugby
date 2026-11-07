@@ -60,6 +60,7 @@ export default function SchoolsAdminPage() {
   const [checking, setChecking] = useState<string | null>(null);
 
   const startDelete = async (s: School) => {
+    if (checking) return; // stays focusable while checking, so the dialog can return focus here
     setChecking(s.id);
     try {
       setUsage(await schoolUsage(s.id));
@@ -96,7 +97,7 @@ export default function SchoolsAdminPage() {
     { key: 'act', header: '', cell: (s) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" icon={<Pencil className="size-4" />} onClick={() => openForm(s)} aria-label={`Edit ${s.name}`}>Edit</Button>
-        <Button size="sm" variant="ghost" className="min-w-11" loading={checking === s.id} onClick={() => void startDelete(s)} aria-label={`Delete ${s.name}`}><Trash2 className="size-4 text-danger" aria-hidden /></Button>
+        <Button size="sm" variant="ghost" className="min-w-11" aria-busy={checking === s.id} onClick={() => void startDelete(s)} aria-label={`Delete ${s.name}`}><Trash2 className="size-4 text-danger" aria-hidden /></Button>
       </div>
     ) },
   ];
