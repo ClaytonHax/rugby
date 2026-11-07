@@ -134,8 +134,11 @@ service cloud.firestore {
       allow get: if isUnion() || hasRole(['school_admin', 'coach', 'manager']);
       allow list: if false;
       allow create: if isUnion() || registers(request.resource.data.schoolId);
-      // Registration staff may correct a mistyped ID at their own school.
-      allow delete: if isUnion() || registers(resource.data.schoolId);
+      // Registration staff may correct a mistyped ID at their own school, but a
+      // verified person's entry stays put so it can't be used to register a duplicate.
+      allow delete: if isUnion()
+        || (registers(resource.data.schoolId)
+            && ownerDoc(resource.data.ownerType, resource.data.ownerId).status != 'verified');
     }
 
     // ---- Identity documents (private, most sensitive) ----------------------

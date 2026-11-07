@@ -345,8 +345,31 @@ describe('idRegistry', () => {
     await assertSucceeds(setDoc(doc(db, 'idRegistry/h2'), { ownerType: 'player', ownerId: 'pA2', schoolId: 'A' }));
     await assertFails(setDoc(doc(db, 'idRegistry/h3'), { ownerType: 'player', ownerId: 'pB2', schoolId: 'B' }));
     await assertFails(setDoc(doc(db, 'idRegistry/h1'), { ownerType: 'player', ownerId: 'pA2', schoolId: 'A' }));
-    await assertFails(deleteDoc(doc(db, 'idRegistry/h1')));
-    await assertSucceeds(deleteDoc(doc(as('saA'), 'idRegistry/h1')));
+  });
+  it('own-school staff clear an unverified entry only', async () => {
+    const admin = async (fn: (db: any) => Promise<unknown>) =>
+      env.withSecurityRulesDisabled(async (c) => { await fn(c.firestore()); });
+    await admin(async (d) => {
+      await setDoc(doc(d, 'players/pDraft'), person({ schoolId: 'A', status: 'draft' }));
+      await setDoc(doc(d, 'players/pDone'), person({ schoolId: 'A', status: 'verified' }));
+      await setDoc(doc(d, 'idRegistry/hDraft'), { ownerType: 'player', ownerId: 'pDraft', schoolId: 'A' });
+      await setDoc(doc(d, 'idRegistry/hDone'), { ownerType: 'player', ownerId: 'pDone', schoolId: 'A' });
+    });
+    await assertFails(deleteDoc(doc(as('coB'), 'idRegistry/hDraft')));
+    await assertFails(deleteDoc(doc(as('coA'), 'idRegistry/hDone')));
+    await assertFails(deleteDoc(doc(as('saA'), 'idRegistry/hDone')));
+    await assertSucceeds(deleteDoc(doc(as('coA'), 'idRegistry/hDraft')));
+  });
+  it('an ID document cannot be relabelled to open it to coaches', async () => {
+    const db = as('coA');
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), 'documents/player_pA3_national_id'), docMeta('player', 'pA3', 'A', 'national_id'));
+    });
+    // Control: the coach may edit this unverified owner's document, so the denials below are about the type.
+    await assertSucceeds(updateDoc(doc(db, 'documents/player_pA3_national_id'), { fileName: 'corrected.jpg' }));
+    await assertFails(updateDoc(doc(db, 'documents/player_pA3_national_id'), { type: 'photo' }));
+    await assertFails(setDoc(doc(db, 'documents/player_pA3_national_id'), docMeta('player', 'pA3', 'A', 'photo')));
+    await assertFails(setDoc(doc(db, 'documents/player_pA3_other'), docMeta('player', 'pA3', 'A', 'photo')));
   });
 });
 
