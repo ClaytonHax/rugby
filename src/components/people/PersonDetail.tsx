@@ -3,7 +3,7 @@ import { doc } from 'firebase/firestore';
 import { AlertTriangle, CheckCircle2, Lock, Pencil, Send, ShieldAlert, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, LinkButton, Modal, PageHeader, SkeletonList, StatusBadge, Textarea, useFocusFirstInvalid, useToast,
+  Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, LinkButton, Modal, PageHeader, SkeletonList, StatusBadge, Textarea, useFocusFirstInvalid, useToast,
 } from '../ui';
 import { formatDate } from '../MatchCard';
 import { db } from '../../lib/firebase';
@@ -12,7 +12,7 @@ import { useAuth } from '../../lib/auth';
 import { ageOn, isOverAge, todayISO } from '../../lib/eligibility';
 import { useOwnerDocuments } from '../../lib/documents';
 import {
-  collectionName, deleteDraftPerson, ID_TYPE_LABELS, idDocType, isUnionRole, missingForSubmission, personName,
+  collectionName, deleteDraftPerson, deletePerson, ID_TYPE_LABELS, idDocType, isUnionRole, missingForSubmission, personName,
   reinstatePerson, rejectPerson, submitForVerification, suspendPerson, verifyPerson, type AnyPerson, type PersonKind,
 } from '../../lib/people';
 import { STAFF_ROLE_LABELS, type Player, type Staff } from '../../lib/types';
@@ -27,7 +27,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type Dialog = null | 'reject' | 'suspend' | 'verify' | 'reinstate' | 'delete';
+type Dialog = null | 'reject' | 'suspend' | 'verify' | 'reinstate' | 'delete' | 'purge';
 
 /** Full record view: identity, guardian, documents and the actions the current role may take. */
 export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
@@ -46,6 +46,7 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  const [typedName, setTypedName] = useState('');
   useFocusFirstInvalid(tick);
 
   if (loading || leaving) return <SkeletonList rows={3} />;
@@ -199,6 +200,9 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
         {(role === 'union_admin' || role === 'school_admin') && p.status === 'draft' && (
           <Button variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => setDialog('delete')}>Delete draft</Button>
         )}
+        {role === 'union_admin' && p.status !== 'draft' && (
+          <Button variant="ghost" icon={<Trash2 className="size-4 text-danger" />} onClick={() => { setTypedName(''); setDialog('purge'); }}>Delete record</Button>
+        )}
       </div>
 
       <ConfirmDialog open={dialog === 'verify'} title="Verify this record?" loading={busy} confirmLabel="Verify"
@@ -211,6 +215,29 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
       <ConfirmDialog open={dialog === 'delete'} title="Delete this draft?" tone="danger" loading={busy} confirmLabel="Delete"
         message="The draft and its uploaded photo and documents will be permanently deleted. The ID number can then be registered again. This cannot be undone."
         onConfirm={() => void run(async () => { setLeaving(true); await deleteDraftPerson(kind, p); navigate(listPath); }, 'Draft deleted.')} onCancel={() => setDialog(null)} />
+      <Modal open={dialog === 'purge'} onClose={() => { if (!busy) setDialog(null); }} title={`Delete this ${kind === 'player' ? 'player' : 'staff'} record?`}
+        footer={<>
+          <Button variant="secondary" onClick={() => setDialog(null)} disabled={busy}>Keep record</Button>
+          <Button variant="danger" type="submit" form="purge-form" loading={busy} disabled={p.status === 'verified' && typedName.trim().toLowerCase() !== p.lastName.trim().toLowerCase()}>Delete permanently</Button>
+        </>}>
+        <form id="purge-form" className="flex flex-col gap-3 text-sm" onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => { setLeaving(true); await deletePerson(kind, p); navigate(listPath, { replace: true }); }, 'Record deleted.');
+        }}>
+          <p><strong>{name}</strong> ({p.status}) will be permanently deleted, including:</p>
+          <ul className="list-disc pl-5">
+            <li>the record and its details{player ? ', guardian and consent' : ''}</li>
+            <li>the photo and identity documents</li>
+            <li>their place in every team squad (over-age counts are updated)</li>
+            <li>the ID number registration, so that number could be registered again</li>
+          </ul>
+          <p>Past team sheets keep their own copy of the name and jersey, so old line-ups still read correctly. This cannot be undone.</p>
+          {p.status === 'verified' && (
+            <Input label={`This record is verified. Type the surname (${p.lastName}) to confirm.`} value={typedName} autoComplete="off"
+              onChange={(e) => setTypedName(e.target.value)} />
+          )}
+        </form>
+      </Modal>
       <Modal open={dialog === 'reject' || dialog === 'suspend'} onClose={() => { setDialog(null); setReasonError(null); }}
         title={dialog === 'suspend' ? 'Suspend record' : 'Reject record'}
         footer={

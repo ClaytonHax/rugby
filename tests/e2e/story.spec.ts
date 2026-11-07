@@ -448,6 +448,8 @@ test('Tryline end-to-end story', async ({ browser }) => {
     await expect(cp.getByText(/need attention before this sheet can be submitted/)).toBeVisible();
     await cp.getByRole('tab', { name: 'Pick from squad' }).click();
     await expect(cp.getByText('"Zanele Phiri" is not registered.')).toBeVisible();
+    // no captain yet: the message says how to choose one
+    await expect(cp.getByText(/Choose a captain: tap a player on the pitch below, then tap "Make captain"/)).toBeVisible();
     await expect(cp.getByRole('button', { name: 'Submit for approval' })).toBeDisabled();
     // 4 over-age on the match day (including the one who turns 19 that day)
     const alert = cp.locator('ul[aria-live="polite"]');

@@ -17,7 +17,7 @@ export function PublicLayout() {
     <div className="flex min-h-dvh flex-col">
       <a href="#main" className="skip-link">Skip to content</a>
       <OfflineBanner />
-      <header className="bg-pitch">
+      <header className="bg-pitch pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-1 px-4 py-2">
           <Logo light />
           <nav aria-label="Public" className="order-last flex w-full gap-1 overflow-x-auto sm:order-none sm:w-auto">

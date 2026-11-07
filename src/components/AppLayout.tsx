@@ -12,6 +12,7 @@ import { ROLE_LABELS, type Role } from '../lib/types';
 import { Logo } from './Brand';
 import { Modal } from './ui';
 import { OfflineBanner } from './OfflineBanner';
+import { InstallApp } from './PwaPrompts';
 
 interface NavItem { to: string; label: string; icon: LucideIcon; roles?: Role[]; end?: boolean }
 
@@ -86,7 +87,7 @@ export function AppLayout() {
 
       <div className="min-w-0 flex-1">
         <OfflineBanner />
-        <div className="flex items-center justify-between bg-pitch px-4 py-2 md:hidden">
+        <div className="flex items-center justify-between bg-pitch px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:hidden">
           <Logo light to="/app" />
           <NavLink to="/app/account" className="flex min-h-11 items-center gap-2 text-sm text-white" aria-label={`Account: ${appUser.displayName}`}>
             <span className="max-w-32 truncate">{appUser.displayName}</span><UserRound className="size-5" aria-hidden />
@@ -126,6 +127,7 @@ export function AppLayout() {
           <NavLink to="/app/account" onClick={() => setMore(false)} className={moreLink}>
             <UserRound className="size-5 text-pitch" aria-hidden />My account
           </NavLink>
+          <InstallApp className="px-3 py-1" />
           <button type="button" onClick={leave} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium hover:bg-chalk">
             <LogOut className="size-5 text-pitch" aria-hidden />Sign out
           </button>

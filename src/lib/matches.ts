@@ -1,4 +1,5 @@
-import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch, type DocumentReference } from 'firebase/firestore';
+import { deleteDocument } from './documents';
 import { auth, db } from './firebase';
 import { confirmWrite, writeAudit } from './data';
 import { SCORE_POINTS, type AgeGroup, type Match, type MatchStatus, type ScoreEvent, type ScoreType, type Team } from './types';
@@ -131,4 +132,25 @@ export async function setStatus(match: Match, status: MatchStatus): Promise<void
     return;
   }
   await p;
+}
+
+/**
+ * Union administrator only. Deletes events, cards and sheets (and any scanned sheet files) first, the match last,
+ * so a failure half way leaves a match that can simply be deleted again.
+ */
+export async function deleteMatch(match: Match): Promise<void> {
+  const subs = await Promise.all(['events', 'cards', 'sheets'].map((name) => getDocs(collection(db, 'matches', match.id, name))));
+  const refs: DocumentReference[] = subs.flatMap((snap) => snap.docs.map((d) => d.ref));
+  for (const d of subs[2].docs) {
+    const scan = (d.data() as { scanDocId?: string }).scanDocId;
+    if (scan) await deleteDocument(scan).catch(() => undefined);
+  }
+  for (let i = 0; i < refs.length; i += 400) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 400).forEach((r) => batch.delete(r));
+    await confirmWrite(batch.commit());
+  }
+  await confirmWrite(deleteDoc(doc(db, 'matches', match.id)));
+  await writeAudit('match.deleted', 'match', match.id,
+    `${match.homeName} v ${match.awayName}, ${match.date}${match.status === 'final' ? ` (final ${match.homeScore}-${match.awayScore})` : ''}`);
 }

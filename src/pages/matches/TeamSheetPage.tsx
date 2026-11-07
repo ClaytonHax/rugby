@@ -6,10 +6,10 @@ import { db } from '../../lib/firebase';
 import { friendlyError, savedText, useCollection, useDoc, useSettings } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
 import { uploadDocument } from '../../lib/documents';
-import { parseNameList, returnSheetToDraft, saveSheet, sheetEntryFor, sheetOwnerId, validateSheet, type ParsedLine } from '../../lib/sheets';
+import { deleteSheet, parseNameList, returnSheetToDraft, saveSheet, sheetEntryFor, sheetOwnerId, validateSheet, type ParsedLine } from '../../lib/sheets';
 import { POSITIONS, type Match, type Player, type SheetEntry, type Team, type TeamRoster, type TeamSheet } from '../../lib/types';
 import { formatDate } from '../../components/MatchCard';
-import { Badge, Button, Card, EmptyState, ErrorState, Modal, PageHeader, Select, SkeletonList, StatusBadge, Tabs, Textarea, useToast } from '../../components/ui';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Modal, PageHeader, Select, SkeletonList, StatusBadge, Tabs, Textarea, useToast } from '../../components/ui';
 import { SheetStatusBadge } from './SheetView';
 
 type Tab = 'squad' | 'upload';
@@ -63,6 +63,8 @@ export default function TeamSheetPage() {
   const [scanProgress, setScanProgress] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (initialised || sheet.loading) return;
@@ -175,6 +177,19 @@ export default function TeamSheetPage() {
       toast.error(friendlyError(e, 'The upload failed. Try again.'));
     } finally {
       setScanProgress(null);
+    }
+  }
+
+  async function removeSheet() {
+    setDeleting(true);
+    try {
+      await deleteSheet(sheet.data as TeamSheet);
+      setDirty(false);
+      toast.success('Sheet deleted.');
+      navigate(`/app/matches/${m.id}`, { replace: true });
+    } catch (e) {
+      toast.error(friendlyError(e, 'Could not delete the sheet.'));
+      setDeleting(false);
     }
   }
 
@@ -340,6 +355,15 @@ export default function TeamSheetPage() {
           <input type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => { void onScan(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
       </Card>
+
+      {sheet.data && (unionLevel || sheet.data.status === 'draft') && m.status !== 'final' && (
+        <div className="mt-5">
+          <Button variant="ghost" icon={<Trash2 className="size-4 text-danger" />} onClick={() => setDeleteOpen(true)}>Delete sheet</Button>
+        </div>
+      )}
+      <ConfirmDialog open={deleteOpen} title="Delete this team sheet?" tone="danger" confirmLabel="Delete sheet" cancelLabel="Keep sheet" loading={deleting}
+        message={`The saved line-up for ${t.name} (${sheet.data?.entries.length ?? 0} players${sheet.data?.scanDocId ? ' and the scanned sheet' : ''}) will be permanently deleted${sheet.data?.status === 'submitted' || sheet.data?.status === 'approved' ? `, even though it is ${sheet.data.status}` : ''}. The squad itself is not affected. You can build a new sheet afterwards.`}
+        onConfirm={() => void removeSheet()} onCancel={() => { if (!deleting) setDeleteOpen(false); }} />
 
       <Modal open={slot !== null} onClose={() => setSlot(null)} focusFirstField={!!slotEntry} title={slot !== null ? `Jersey ${slot}${slot > 15 ? ' (replacement)' : ''}` : ''}>
         {slot !== null && slotEntry ? (

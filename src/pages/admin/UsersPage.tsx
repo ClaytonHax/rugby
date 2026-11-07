@@ -3,6 +3,7 @@ import { collection, deleteDoc, doc, query, serverTimestamp, setDoc, updateDoc, 
 import { Plus } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../lib/auth';
+import { removeUserAccess } from '../../lib/admin';
 import { confirmWrite, friendlyError, savedText, useCollection, useSchools, writeAudit } from '../../lib/data';
 import { ROLE_LABELS, type AppUser, type Invite, type Role } from '../../lib/types';
 import { Badge, Button, ConfirmDialog, DataList, Input, Modal, PageHeader, Select, useFocusFirstInvalid, useToast, type Column } from '../../components/ui';
@@ -40,6 +41,7 @@ export default function UsersPage() {
   useFocusFirstInvalid(tick);
   const [toggle, setToggle] = useState<AppUser | null>(null);
   const [revoke, setRevoke] = useState<Invite | null>(null);
+  const [removeUser, setRemoveUser] = useState<AppUser | null>(null);
 
   if (!appUser) return null;
   const roles = isUnionAdmin ? ALL_ROLES : SCHOOL_INVITABLE;
@@ -92,6 +94,20 @@ export default function UsersPage() {
     }
   };
 
+  const confirmRemove = async () => {
+    if (!removeUser) return;
+    setBusy(true);
+    try {
+      await removeUserAccess(removeUser);
+      toast.success(`${removeUser.displayName} no longer has access.`);
+      setRemoveUser(null);
+    } catch (err) {
+      toast.error(friendlyError(err, 'Could not remove access.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const confirmRevoke = async () => {
     if (!revoke) return;
     setBusy(true);
@@ -117,7 +133,12 @@ export default function UsersPage() {
     { key: 'role', header: 'Role', cell: (u) => ROLE_LABELS[u.role] },
     { key: 'school', header: 'School', cell: (u) => schoolName(u.schoolId) },
     { key: 'status', header: 'Status', cell: (u) => <Badge tone={u.active ? 'green' : 'red'}>{u.active ? 'Active' : 'Deactivated'}</Badge> },
-    { key: 'act', header: '', cell: (u) => canToggle(u) ? <Button size="sm" variant="secondary" aria-label={`${u.active ? 'Deactivate' : 'Reactivate'} ${u.displayName}`} onClick={() => setToggle(u)}>{u.active ? 'Deactivate' : 'Reactivate'}</Button> : null },
+    { key: 'act', header: '', cell: (u) => canToggle(u) ? (
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" aria-label={`${u.active ? 'Deactivate' : 'Reactivate'} ${u.displayName}`} onClick={() => setToggle(u)}>{u.active ? 'Deactivate' : 'Reactivate'}</Button>
+        {isUnionAdmin && <Button size="sm" variant="ghost" className="text-danger" aria-label={`Remove access for ${u.displayName}`} onClick={() => setRemoveUser(u)}>Remove access</Button>}
+      </div>
+    ) : null },
   ];
   const inviteCols: Column<Invite>[] = [
     { key: 'email', header: 'Email', primary: true, cell: (i) => i.email },
@@ -156,6 +177,13 @@ export default function UsersPage() {
         message={toggle?.active ? `${toggle?.displayName} will be signed out and unable to use Tryline until reactivated.` : `${toggle?.displayName} will be able to sign in again.`}
         confirmLabel={toggle?.active ? 'Deactivate' : 'Reactivate'} tone={toggle?.active ? 'danger' : 'primary'} loading={busy}
         onConfirm={confirmToggle} onCancel={() => setToggle(null)} />
+      <ConfirmDialog open={!!removeUser} title="Remove access?" tone="danger" confirmLabel="Remove access" loading={busy}
+        message={<div className="flex flex-col gap-2">
+          <p><strong>{removeUser?.displayName}</strong> ({removeUser?.email}) will lose all access to Tryline straight away and disappear from this list.</p>
+          <p>Their login cannot be deleted from here, so the email address stays registered. If you invite the same address again, they get access back the next time they sign in.</p>
+          <p className="text-ink-soft">Deactivate is gentler: it blocks sign-in but keeps the account, so it can be reactivated in one tap.</p>
+        </div>}
+        onConfirm={confirmRemove} onCancel={() => setRemoveUser(null)} />
       <ConfirmDialog open={!!revoke} title="Revoke invitation?" message={`${revoke?.email} will no longer be able to claim access.`}
         confirmLabel="Revoke" tone="danger" loading={busy} onConfirm={confirmRevoke} onCancel={() => setRevoke(null)} />
     </div>

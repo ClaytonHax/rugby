@@ -1,8 +1,8 @@
-import { arrayRemove, arrayUnion, collection, doc, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
 import { confirmWrite, writeAudit } from './data';
 import { isOverAge, ageOn, todayISO } from './eligibility';
-import type { AgeGroup, CompetitionSettings, Player, School, Staff, Team, TeamRoster } from './types';
+import type { AgeGroup, CompetitionSettings, Match, Player, School, Staff, Team, TeamRoster } from './types';
 
 /** Thrown when adding a player would put a team above the over-age cap. */
 export class OverAgeError extends Error {
@@ -139,6 +139,42 @@ export async function removeStaff(teamId: string, staffId: string): Promise<void
     }
     if (staffSnap.exists()) tx.update(staffRef, { teamIds: arrayRemove(teamId), updatedAt: serverTimestamp() });
   });
+}
+
+/** Matches that use this team, home or away. A team in a match cannot be deleted without breaking it. */
+export async function matchesUsingTeam(teamId: string): Promise<Match[]> {
+  const [home, away] = await Promise.all([
+    getDocs(query(collection(db, 'matches'), where('homeTeamId', '==', teamId))),
+    getDocs(query(collection(db, 'matches'), where('awayTeamId', '==', teamId))),
+  ]);
+  return [...home.docs, ...away.docs].map((d) => ({ ...d.data(), id: d.id }) as Match);
+}
+
+/** Deletes the team and its squad list. Throws TeamInUseError, deleting nothing, if any match uses it. */
+export async function deleteTeam(team: Team): Promise<void> {
+  const used = await matchesUsingTeam(team.id);
+  if (used.length) throw new TeamInUseError(used);
+  const rosterSnap = await getDoc(doc(db, 'teamRosters', team.id));
+  const roster = rosterSnap.exists() ? (rosterSnap.data() as TeamRoster) : null;
+  const batch = writeBatch(db);
+  if (roster) batch.delete(doc(db, 'teamRosters', team.id)); // a rule cannot evaluate a delete of a missing document
+  batch.delete(doc(db, 'teams', team.id));
+  await confirmWrite(batch.commit());
+  // Tidy the "teams" list on each member's record. Best effort: a suspended record cannot be changed by a school.
+  if (roster) {
+    for (const id of roster.playerIds) await updateDoc(doc(db, 'players', id), { teamIds: arrayRemove(team.id) }).catch(() => undefined);
+    for (const id of roster.staffIds) await updateDoc(doc(db, 'staff', id), { teamIds: arrayRemove(team.id) }).catch(() => undefined);
+  }
+  await writeAudit('team.deleted', 'team', team.id, team.name);
+}
+
+export class TeamInUseError extends Error {
+  matches: Match[];
+  constructor(matches: Match[]) {
+    super('This team is used in matches.');
+    this.name = 'TeamInUseError';
+    this.matches = matches;
+  }
 }
 
 // ---- CSV ----------------------------------------------------------------------

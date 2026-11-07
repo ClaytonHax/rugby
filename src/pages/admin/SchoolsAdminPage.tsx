@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { collection, deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { db } from '../../lib/firebase';
+import { deleteSchool, schoolUsage, usageIsEmpty, type SchoolUsage } from '../../lib/admin';
 import { confirmWrite, friendlyError, savedText, useSchools, writeAudit } from '../../lib/data';
 import type { School } from '../../lib/types';
-import { Button, ConfirmDialog, DataList, EmptyState, Input, Modal, PageHeader, Select, useFocusFirstInvalid, useToast, type Column } from '../../components/ui';
+import { Button, DataList, EmptyState, Input, Modal, PageHeader, Select, useFocusFirstInvalid, useToast, type Column } from '../../components/ui';
 
 const PROVINCES = ['Bulawayo', 'Harare', 'Manicaland', 'Mashonaland Central', 'Mashonaland East', 'Mashonaland West', 'Masvingo', 'Matabeleland North', 'Matabeleland South', 'Midlands'];
 
@@ -55,14 +56,29 @@ export default function SchoolsAdminPage() {
     }
   };
 
+  const [usage, setUsage] = useState<SchoolUsage | null>(null);
+  const [checking, setChecking] = useState<string | null>(null);
+
+  const startDelete = async (s: School) => {
+    setChecking(s.id);
+    try {
+      setUsage(await schoolUsage(s.id));
+      setDel(s);
+    } catch (err) {
+      toast.error(friendlyError(err, 'Could not check what belongs to this school.'));
+    } finally {
+      setChecking(null);
+    }
+  };
+  const closeDelete = () => { setDel(null); setUsage(null); };
+
   const remove = async () => {
     if (!del) return;
     setBusy(true);
     try {
-      const outcome = await confirmWrite(deleteDoc(doc(db, 'schools', del.id)));
-      void writeAudit('school.deleted', 'school', del.id, del.name);
-      toast.success(savedText('School deleted.', outcome));
-      setDel(null);
+      await deleteSchool(del.id, del.name);
+      toast.success('School deleted.');
+      closeDelete();
     } catch (err) {
       toast.error(friendlyError(err, 'Could not delete the school.'));
     } finally {
@@ -80,7 +96,7 @@ export default function SchoolsAdminPage() {
     { key: 'act', header: '', cell: (s) => (
       <div className="flex gap-2">
         <Button size="sm" variant="secondary" icon={<Pencil className="size-4" />} onClick={() => openForm(s)} aria-label={`Edit ${s.name}`}>Edit</Button>
-        <Button size="sm" variant="ghost" className="min-w-11" onClick={() => setDel(s)} aria-label={`Delete ${s.name}`}><Trash2 className="size-4 text-danger" aria-hidden /></Button>
+        <Button size="sm" variant="ghost" className="min-w-11" loading={checking === s.id} onClick={() => void startDelete(s)} aria-label={`Delete ${s.name}`}><Trash2 className="size-4 text-danger" aria-hidden /></Button>
       </div>
     ) },
   ];
@@ -104,8 +120,26 @@ export default function SchoolsAdminPage() {
           <Button type="submit" loading={busy}>Save school</Button>
         </form>
       </Modal>
-      <ConfirmDialog open={!!del} title="Delete school?" message={`${del?.name} will be removed from the directory. Existing teams and records are not deleted.`}
-        confirmLabel="Delete" tone="danger" loading={busy} onConfirm={remove} onCancel={() => setDel(null)} />
+      <Modal open={!!del} onClose={closeDelete} title={usage && !usageIsEmpty(usage) ? 'This school cannot be deleted yet' : 'Delete school?'}
+        footer={usage && !usageIsEmpty(usage)
+          ? <Button onClick={closeDelete}>OK</Button>
+          : <><Button variant="secondary" onClick={closeDelete} disabled={busy}>Keep school</Button><Button variant="danger" loading={busy} onClick={() => void remove()}>Delete school</Button></>}>
+        {usage && !usageIsEmpty(usage) ? (
+          <div className="text-sm">
+            <p><strong>{del?.name}</strong> still has:</p>
+            <ul className="my-2 list-disc pl-5">
+              {usage.teams > 0 && <li>{usage.teams} {usage.teams === 1 ? 'team' : 'teams'}</li>}
+              {usage.players > 0 && <li>{usage.players} {usage.players === 1 ? 'player' : 'players'}</li>}
+              {usage.staff > 0 && <li>{usage.staff} staff {usage.staff === 1 ? 'record' : 'records'}</li>}
+              {usage.users > 0 && <li>{usage.users} user {usage.users === 1 ? 'account' : 'accounts'}</li>}
+              {usage.matches > 0 && <li>{usage.matches} {usage.matches === 1 ? 'match' : 'matches'}</li>}
+            </ul>
+            <p>Deleting it now would leave these without a school. Delete or move them first (matches, teams, players and staff, then remove user access), then try again.</p>
+          </div>
+        ) : (
+          <p className="text-sm"><strong>{del?.name}</strong> has no teams, players, staff, users or matches. It will be removed from the public directory. This cannot be undone.</p>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { ToastProvider, SkeletonList } from './components/ui';
 import { RequireRole } from './components/RequireRole';
 import { AppLayout } from './components/AppLayout';
 import { PublicLayout } from './components/PublicLayout';
+import { UpdatePrompt } from './components/PwaPrompts';
 import type { Role } from './lib/types';
 
 const L = (f: () => Promise<{ default: ComponentType }>) => lazy(f);
@@ -67,6 +68,7 @@ export default function App() {
       <RouteChange />
       <AuthProvider>
         <ToastProvider>
+          <UpdatePrompt />
           <Suspense fallback={<div className="p-6"><SkeletonList /></div>}>
             <Routes>
               <Route element={<PublicLayout />}>

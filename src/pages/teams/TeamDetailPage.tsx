@@ -1,23 +1,32 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { collection, doc, query, where } from 'firebase/firestore';
-import { AlertTriangle, Download, Plus, UserMinus, UserPlus } from 'lucide-react';
+import { AlertTriangle, Download, Plus, Trash2, UserMinus, UserPlus } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { friendlyError, useCollection, useDoc, useSettings } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
 import { isOverAge, todayISO } from '../../lib/eligibility';
 import {
-  addPlayerToRoster, addStaff, downloadText, OverAgeError, removePlayerFromRoster, removeStaff, squadCsv,
+  addPlayerToRoster, addStaff, deleteTeam, downloadText, matchesUsingTeam, OverAgeError, removePlayerFromRoster, removeStaff, squadCsv,
 } from '../../lib/teams';
-import { STAFF_ROLE_LABELS, type Player, type Staff, type Team, type TeamRoster } from '../../lib/types';
+import { STAFF_ROLE_LABELS, type Match, type Player, type RecordStatus, type Staff, type Team, type TeamRoster } from '../../lib/types';
 import { formatDate } from '../../components/MatchCard';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, Modal, PageHeader, SkeletonList, StatusBadge, useToast } from '../../components/ui';
 
 type Mode = null | 'player' | 'staff';
 
+/** Why someone who is not verified cannot be added, and what to do about it. Only drafts get the "finish registration" route. */
+const NOT_ADDABLE: Record<Exclude<RecordStatus, 'verified'>, { why: string; link?: string }> = {
+  draft: { why: 'Registration is not finished yet.', link: 'Finish registration' },
+  pending: { why: 'Waiting for a registrar to verify. They can be added once verified.', link: 'View record' },
+  rejected: { why: 'The registrar sent this back. Fix the problem and submit it again.', link: 'Open record' },
+  suspended: { why: 'Suspended by the registrar, so they cannot be added. Contact the registrar.', link: 'View record' },
+};
+
 export default function TeamDetailPage() {
   const { id = '' } = useParams();
   const { appUser } = useAuth();
+  const navigate = useNavigate();
   const { settings } = useSettings();
   const toast = useToast();
   const team = useDoc<Team>(() => doc(db, 'teams', id), [id]);
@@ -30,6 +39,7 @@ export default function TeamDetailPage() {
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [overAgeError, setOverAgeError] = useState<OverAgeError | null>(null);
+  const [del, setDel] = useState<null | { checking: boolean; matches: Match[] }>(null);
   const [removing, setRemoving] = useState<{ kind: 'player' | 'staff'; id: string; name: string } | null>(null);
 
   const today = todayISO();
@@ -69,12 +79,37 @@ export default function TeamDetailPage() {
   if (team.error) return <ErrorState page title="Could not open this team" description={team.error} onRetry={team.retry} />;
   if (!team.data) return <EmptyState page title="Team not found" description="It may have been removed." />;
   const t = team.data;
+  const canDelete = appUser?.role === 'union_admin' || appUser?.role === 'registrar' || (appUser?.role === 'school_admin' && appUser.schoolId === t.schoolId);
+
+  async function startDelete() {
+    setDel({ checking: true, matches: [] });
+    try {
+      setDel({ checking: false, matches: await matchesUsingTeam(t.id) });
+    } catch (e) {
+      setDel(null);
+      toast.error(friendlyError(e, 'Could not check whether this team is used in matches.'));
+    }
+  }
+  async function confirmDelete() {
+    setBusy('delete-team');
+    try {
+      await deleteTeam(t);
+      toast.success(`${t.name} deleted.`);
+      navigate('/app/teams', { replace: true });
+    } catch (e) {
+      toast.error(friendlyError(e, 'Could not delete the team.'));
+      setBusy(null);
+    }
+  }
 
   return (
     <div>
       <PageHeader title={t.name} subtitle={`${t.ageGroup} · Season ${t.season}`} backTo="/app/teams" backLabel="Back to teams"
-        actions={<Button variant="secondary" icon={<Download className="size-4" />} disabled={inSquad.length === 0}
-          onClick={() => downloadText(`${t.name.replace(/[^a-z0-9]+/gi, '-')}-squad.csv`, squadCsv(t, inSquad, settings))}>Export squad CSV</Button>} />
+        actions={<>
+          <Button variant="secondary" icon={<Download className="size-4" />} disabled={inSquad.length === 0}
+            onClick={() => downloadText(`${t.name.replace(/[^a-z0-9]+/gi, '-')}-squad.csv`, squadCsv(t, inSquad, settings))}>Export squad CSV</Button>
+          {canDelete && <Button variant="secondary" icon={<Trash2 className="size-4 text-danger" />} loading={del?.checking} onClick={() => void startDelete()}>Delete team</Button>}
+        </>} />
 
       <Card className={`mb-5 ${over ? 'border-danger bg-red-50' : ''}`}>
         <div className="flex items-center justify-between gap-4">
@@ -161,6 +196,7 @@ export default function TeamDetailPage() {
                     <StatusBadge status={p.status} />
                     {mode === 'player' && ok && isOverAge(p.dob, today, settings) && <Badge tone="gold">Over-age</Badge>}
                   </div>
+                  {!ok && <p className="mt-1 text-xs text-ink-soft">{NOT_ADDABLE[p.status as Exclude<RecordStatus, 'verified'>].why}</p>}
                 </div>
                 {ok ? (
                   <Button size="sm" loading={busy === p.id} disabled={busy !== null}
@@ -168,12 +204,34 @@ export default function TeamDetailPage() {
                     onClick={() => run(p.id, () => (mode === 'player' ? addPlayerToRoster(t.id, p.id, settings) : addStaff(t.id, p.id)),
                       `${p.firstName} ${p.lastName} added to ${mode === 'player' ? 'the squad' : 'the team'}.`)}>Add</Button>
                 ) : (
-                  <Link className="text-sm font-semibold text-pitch underline" to={`/app/${mode === 'player' ? 'players' : 'staff'}/${p.id}`}>Finish registration</Link>
+                  <Link className="shrink-0 text-sm font-semibold text-pitch underline" to={`/app/${mode === 'player' ? 'players' : 'staff'}/${p.id}`}>{NOT_ADDABLE[p.status as Exclude<RecordStatus, 'verified'>].link}</Link>
                 )}
               </li>
             );
           })}
         </ul>
+      </Modal>
+
+      <Modal open={del !== null && !del.checking} onClose={() => { if (busy === null) setDel(null); }}
+        title={del && del.matches.length > 0 ? 'This team is used in matches' : 'Delete this team?'}
+        footer={del && del.matches.length > 0
+          ? <Button onClick={() => setDel(null)}>OK</Button>
+          : <><Button variant="secondary" onClick={() => setDel(null)} disabled={busy !== null}>Keep team</Button>
+              <Button variant="danger" loading={busy === 'delete-team'} onClick={() => void confirmDelete()}>Delete team</Button></>}>
+        {del && del.matches.length > 0 ? (
+          <div className="text-sm">
+            <p>{t.name} cannot be deleted while matches use it, because those matches would break. Delete or change these matches first:</p>
+            <ul className="mt-2 list-disc pl-5">
+              {del.matches.map((m) => <li key={m.id}><Link className="font-semibold text-pitch underline" to={`/app/matches/${m.id}`}>{m.homeName} v {m.awayName}</Link>, {formatDate(m.date)}</li>)}
+            </ul>
+            <p className="mt-2 text-ink-soft">Only the union administrator can delete a match.</p>
+          </div>
+        ) : (
+          <p className="text-sm">
+            <strong>{t.name}</strong> and its squad list ({inSquad.length} {inSquad.length === 1 ? 'player' : 'players'}, {staffInTeam.length} staff) will be permanently deleted.
+            The players and staff stay on the school register. This cannot be undone.
+          </p>
+        )}
       </Modal>
 
       <ConfirmDialog open={removing !== null} title={removing?.kind === 'player' ? 'Remove from the squad?' : 'Remove from the team?'} tone="danger"

@@ -33,6 +33,26 @@ Other scripts: `npm run build` (type-check and production build), `npm run lint`
 
 Access is by invitation only. An admin creates an invite for an email address, and the invitee signs up with that address and goes straight in. There is no email verification step; email ownership is not checked.
 
+## Deleting things
+
+Every delete asks for confirmation and says what will be lost. Who can do what follows the security rules:
+
+- **Team** (union staff, or the school administrator of that school): removes the team and its squad list. Blocked, with the matches listed, while any match uses the team.
+- **Team sheet** (school: drafts only; union: any): removes the line-up and its scanned copy.
+- **Match** (union administrator): removes the match with its events, cards, team sheets and scans. A final match disappears from public results and the logs.
+- **Player or staff record** (union administrator, any status; school administrators can still delete their own drafts): removes the record, its photo and documents, its ID registration and its place in squads. Past team sheets keep their own copy of the name. A verified record needs the surname typed to confirm.
+- **School** (union administrator): blocked while it still has teams, players, staff, users or matches.
+- **User** (union administrator, not yourself): Remove access deletes the profile. The login itself stays registered; inviting the same email again restores access the next time they sign in. Deactivate is the reversible alternative.
+
+## Install as an app
+
+Tryline is a progressive web app: the shell opens with no signal, and data changes sync when the connection returns.
+
+- **Android / Chrome / Edge:** open Account (or More on a phone) and tap **Install app**, or use the browser's install option.
+- **iPhone / iPad:** in Safari tap Share, then **Add to Home Screen**.
+
+The service worker (`public/sw.js`) only handles same-origin requests; Firestore, Auth and documents never pass through it. It is registered in production builds only, never with the emulators. When a new version is ready a "New version available" banner appears and nothing reloads until you tap Reload. Icons were generated from `public/favicon.svg`.
+
 ## Data privacy
 
 - Player and staff records contain personal data about minors, so the database is default-deny. Public pages show only school, team and match data, and on scoring events only an initial and surname.

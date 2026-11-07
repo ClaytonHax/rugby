@@ -1,6 +1,6 @@
 // Registration of players and staff: duplicate-ID prevention, submission, verification actions.
 import {
-  collection, deleteField, doc, getDoc, query, runTransaction, serverTimestamp, updateDoc, where,
+  arrayRemove, collection, deleteField, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where,
   writeBatch, type Query,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -236,6 +236,33 @@ export async function deleteDraftPerson(kind: PersonKind, p: AnyPerson): Promise
   batch.delete(doc(db, collectionName(kind), p.id));
   await confirmWrite(batch.commit());
   await writeAudit(`${kind}.deleted`, kind, p.id, `Draft deleted: ${personName(p)}`);
+}
+
+/**
+ * Union administrator only: permanently removes a record of any status.
+ * Order matters for a safe retry: the squads and documents go first and the record itself goes last,
+ * so if anything fails half way the record is still there and Delete can be run again.
+ * Past team sheets keep their own copy of the player's name and jersey; those are not touched.
+ */
+export async function deletePerson(kind: PersonKind, p: AnyPerson): Promise<void> {
+  const rosters = await getDocs(query(
+    collection(db, 'teamRosters'),
+    where(kind === 'player' ? 'playerIds' : 'staffIds', 'array-contains', p.id),
+  ));
+  for (const r of rosters.docs) {
+    await updateDoc(r.ref, kind === 'player'
+      ? { playerIds: arrayRemove(p.id), overAgeIds: arrayRemove(p.id) }
+      : { staffIds: arrayRemove(p.id) });
+  }
+  // Every document of this owner, found by query so stale `docTypes` cannot leave bytes behind.
+  const docs = await getDocs(query(collection(db, 'documents'), where('ownerType', '==', kind), where('ownerId', '==', p.id)));
+  for (const d of docs.docs) await deleteDocument(d.id);
+  for (const t of p.docTypes) await deleteDocument(docId(kind, p.id, t));
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'idRegistry', await idHash(p.idType, p.idNumber)));
+  batch.delete(doc(db, collectionName(kind), p.id));
+  await confirmWrite(batch.commit());
+  await writeAudit(`${kind}.deleted`, kind, p.id, `Deleted ${p.status} record: ${personName(p)}`);
 }
 
 // ---------------------------------------------------------------- submission

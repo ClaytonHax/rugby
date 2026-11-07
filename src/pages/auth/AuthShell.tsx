@@ -5,7 +5,7 @@ import { useDocumentTitle } from '../../components/ui';
 export function AuthShell({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   useDocumentTitle(title);
   return (
-    <div className="flex min-h-dvh flex-col items-center bg-pitch px-4 py-8">
+    <div className="flex min-h-dvh flex-col items-center bg-pitch px-4 pb-8 pt-[max(2rem,env(safe-area-inset-top))]">
       <Logo light />
       <main className="mt-6 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
         <h1 className="text-3xl text-ink">{title}</h1>

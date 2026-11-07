@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { doc } from 'firebase/firestore';
-import { ClipboardList, Eye, Play } from 'lucide-react';
+import { ClipboardList, Eye, Play, Trash2 } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { friendlyError, useDoc } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
-import { setStatus } from '../../lib/matches';
+import { deleteMatch, setStatus } from '../../lib/matches';
 import type { Match, TeamSheet } from '../../lib/types';
 import { formatDate } from '../../components/MatchCard';
 import { Button, Card, ConfirmDialog, EmptyState, ErrorState, LinkButton, PageHeader, SkeletonList, useToast } from '../../components/ui';
@@ -53,7 +53,9 @@ export default function MatchAdminPage() {
   const { appUser } = useAuth();
   const toast = useToast();
   const match = useDoc<Match>(() => doc(db, 'matches', id), [id]);
-  const [confirm, setConfirm] = useState<null | 'cancel' | 'reopen'>(null);
+  const navigate = useNavigate();
+  const [confirm, setConfirm] = useState<null | 'cancel' | 'reopen' | 'delete'>(null);
+  const [deleting, setDeleting] = useState(false);
   if (match.loading) return <SkeletonList />;
   if (match.error) return <ErrorState page title="Could not open this match" description={match.error} onRetry={match.retry} />;
   if (!match.data) return <EmptyState page title="Match not found" description="It may have been removed." action={<LinkButton to="/app/matches" variant="secondary">Back to matches</LinkButton>} />;
@@ -62,6 +64,18 @@ export default function MatchAdminPage() {
   const unionLevel = role === 'union_admin' || role === 'registrar';
   const canScore = unionLevel || role === 'scorer' || (appUser?.schoolId != null && m.schoolIds.includes(appUser.schoolId));
   const showSheets = role !== undefined && (unionLevel || role === 'scorer' || (appUser?.schoolId != null && m.schoolIds.includes(appUser.schoolId)));
+
+  async function remove() {
+    setDeleting(true);
+    try {
+      await deleteMatch(m);
+      toast.success('Match deleted.');
+      navigate('/app/matches', { replace: true });
+    } catch (e) {
+      toast.error(friendlyError(e, 'Could not delete the match.'));
+      setDeleting(false);
+    }
+  }
 
   function change(status: Match['status'], msg: string) {
     setConfirm(null);
@@ -85,6 +99,7 @@ export default function MatchAdminPage() {
             <LinkButton to={`/app/matches/${m.id}/score`} variant="gold" icon={<Play className="size-4" />}>{m.status === 'live' ? 'Continue scoring' : 'Score match'}</LinkButton>
           )}
           {canScore && m.status === 'scheduled' && <Button variant="secondary" onClick={() => setConfirm('cancel')}>Cancel match</Button>}
+          {role === 'union_admin' && <Button variant="ghost" icon={<Trash2 className="size-4 text-danger" />} onClick={() => setConfirm('delete')}>Delete match</Button>}
           {role === 'union_admin' && (m.status === 'final' || m.status === 'cancelled') && <Button variant="secondary" onClick={() => setConfirm('reopen')}>Reopen match</Button>}
         </div>
       </Card>
@@ -98,6 +113,13 @@ export default function MatchAdminPage() {
       )}
       <ConfirmDialog open={confirm === 'cancel'} title="Cancel this match?"  message="It will show as cancelled on the public site, and nobody will be able to score it unless the union reopens it."
         confirmLabel="Cancel match" cancelLabel="Keep match" tone="danger" onConfirm={() => change('cancelled', 'Match cancelled.')} onCancel={() => setConfirm(null)} />
+      <ConfirmDialog open={confirm === 'delete'} title="Delete this match?" tone="danger" confirmLabel="Delete match" cancelLabel="Keep match" loading={deleting}
+        message={<div className="flex flex-col gap-2">
+          <p><strong>{m.homeName} v {m.awayName}</strong> will be permanently deleted with all its scoring events, cards, team sheets and scanned sheets.</p>
+          {m.status === 'final' && <p className="font-semibold text-danger">This match is final ({m.homeScore} - {m.awayScore}). Its result will disappear from the public results page and from the league standings, and the log will be recalculated without it.</p>}
+          <p>This cannot be undone.</p>
+        </div>}
+        onConfirm={() => void remove()} onCancel={() => { if (!deleting) setConfirm(null); }} />
       <ConfirmDialog open={confirm === 'reopen'} title="Reopen this match?" message="It goes back to live so the score can be corrected. This is recorded in the audit log."
         confirmLabel="Reopen" onConfirm={() => change('live', 'Match reopened.')} onCancel={() => setConfirm(null)} />
     </div>

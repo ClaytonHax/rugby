@@ -1,4 +1,5 @@
-import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDocument } from './documents';
 import { auth, db } from './firebase';
 import { confirmWrite, writeAudit } from './data';
 import { isOverAge } from './eligibility';
@@ -52,7 +53,7 @@ export function validateSheet(
   }
 
   const captains = entries.filter((e) => e.isCaptain);
-  if (captains.length === 0) issues.push({ code: 'no_captain', message: 'Choose a captain.' });
+  if (captains.length === 0) issues.push({ code: 'no_captain', message: 'Choose a captain: tap a player on the pitch below, then tap "Make captain".' });
   if (captains.length > 1) issues.push({ code: 'many_captains', message: 'Only one captain is allowed.' });
 
   const seenJersey = new Map<number, string>();
@@ -223,4 +224,11 @@ export async function rejectSheet(sheet: TeamSheet, note: string): Promise<'save
 /** Registrar action: lets the school edit a rejected (or approved) sheet again. */
 export function returnSheetToDraft(sheet: TeamSheet, note = ''): Promise<'saved' | 'queued'> {
   return review(sheet, 'draft', note, 'sheet.returned_to_draft');
+}
+
+/** Deletes a sheet and its scanned copy. A school may only do this while the sheet is a draft; the union may at any time. */
+export async function deleteSheet(sheet: TeamSheet): Promise<void> {
+  if (sheet.scanDocId) await deleteDocument(sheet.scanDocId).catch(() => undefined);
+  await confirmWrite(deleteDoc(sheetRef(sheet.matchId, sheet.teamId)));
+  void writeAudit('sheet.deleted', 'sheet', sheetOwnerId(sheet.matchId, sheet.teamId), `${sheet.entries.length} players, was ${sheet.status}`).catch(() => undefined);
 }

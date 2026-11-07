@@ -5,6 +5,7 @@ import { db } from '../../lib/firebase';
 import { friendlyAuthError, useAuth } from '../../lib/auth';
 import { confirmWrite, friendlyError, savedText } from '../../lib/data';
 import { ROLE_LABELS } from '../../lib/types';
+import { InstallApp } from '../../components/PwaPrompts';
 import { Button, Card, Input, PageHeader, useFocusFirstInvalid, useToast } from '../../components/ui';
 
 export default function AccountPage() {
@@ -75,6 +76,11 @@ export default function AccountPage() {
             <Input label="Phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
             <div><Button type="submit" loading={saving}>Save profile</Button></div>
           </form>
+        </Card>
+        <Card>
+          <h2 className="mb-2 text-xl">Install on this device</h2>
+          <p className="mb-3 text-sm text-ink-soft">Open Tryline from your home screen like an app. It opens even with no signal, and saved changes sync when you are back online.</p>
+          <InstallApp />
         </Card>
         <Card>
           <form onSubmit={changePassword} className="flex flex-col gap-4">
