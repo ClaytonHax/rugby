@@ -1,0 +1,220 @@
+rules_version = '2';
+
+// Tryline security rules. Holds personal data and identity documents of minors:
+// default-deny, and anything public must contain no personal data beyond the
+// initial + surname shown on published scoring events.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function path(p) { return /databases/$(database)/documents/$(p); }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().active == true; }
+    function hasRole(roles) { return active() && me().role in roles; }
+
+    function isUnionAdmin() { return hasRole(['union_admin']); }
+    // Union-level staff: see every school and may verify records.
+    function isUnion() { return hasRole(['union_admin', 'registrar']); }
+    function isSchoolAdmin(schoolId) { return hasRole(['school_admin']) && me().schoolId == schoolId; }
+    // School-level staff allowed to work with registration records.
+    function registers(schoolId) { return hasRole(['school_admin', 'coach', 'manager']) && me().schoolId == schoolId; }
+    function isScorerFor(schoolIds) {
+      return hasRole(['scorer']) && (me().schoolId == null || me().schoolId in schoolIds);
+    }
+    function settings() { return get(/databases/$(database)/documents/settings/competition).data; }
+
+    // Fields a school may not change once a union registrar has verified a record.
+    function lockedFields() {
+      return ['firstName', 'lastName', 'dob', 'idType', 'idNumber', 'schoolId', 'status',
+              'registrationNo', 'verifiedBy', 'verifiedAt', 'rejectionReason'];
+    }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    function validPersonCreate(d) {
+      return registers(d.schoolId)
+        && d.status in ['draft', 'pending']
+        && d.firstName is string && d.lastName is string && d.dob is string
+        && !('verifiedBy' in d) && !('verifiedAt' in d);
+    }
+    function validPersonUpdate() {
+      return registers(resource.data.schoolId)
+        && (resource.data.status == 'verified'
+              ? !changed().hasAny(lockedFields())
+              : (resource.data.status in ['draft', 'pending', 'rejected']
+                  && request.resource.data.status in ['draft', 'pending']
+                  && request.resource.data.schoolId == resource.data.schoolId
+                  && !changed().hasAny(['verifiedBy', 'verifiedAt', 'registrationNo'])));
+    }
+
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isUnionAdmin();
+    }
+
+    // ---- People and access -------------------------------------------------
+    match /users/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow read: if isUnion() || (hasRole(['school_admin']) && resource.data.schoolId == me().schoolId);
+      // First sign-in: a verified email claims the invite waiting for that address.
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.auth.token.email_verified == true
+        && request.resource.data.email == request.auth.token.email.lower()
+        && request.resource.data.active == true
+        && exists(path('invites/' + request.auth.token.email.lower()))
+        && request.resource.data.role == get(path('invites/' + request.auth.token.email.lower())).data.role
+        && request.resource.data.schoolId == get(path('invites/' + request.auth.token.email.lower())).data.schoolId;
+      allow update: if isUnionAdmin()
+        || (signedIn() && request.auth.uid == uid && changed().hasOnly(['displayName', 'phone']))
+        || (isSchoolAdmin(resource.data.schoolId) && resource.data.role != 'school_admin' && changed().hasOnly(['active']));
+      allow delete: if isUnionAdmin();
+    }
+
+    match /invites/{email} {
+      allow get: if (signedIn() && request.auth.token.email.lower() == email) || isUnionAdmin()
+        || isSchoolAdmin(resource.data.schoolId);
+      allow list: if isUnionAdmin() || isSchoolAdmin(resource.data.schoolId);
+      allow create: if isUnionAdmin()
+        || (isSchoolAdmin(request.resource.data.schoolId)
+            && request.resource.data.role in ['coach', 'manager', 'scorer']);
+      allow delete: if isUnionAdmin() || isSchoolAdmin(resource.data.schoolId)
+        || (signedIn() && request.auth.token.email_verified == true && request.auth.token.email.lower() == email);
+    }
+
+    match /auditLogs/{id} {
+      allow create: if active() && request.resource.data.byUid == request.auth.uid;
+      allow read: if isUnion();
+    }
+
+    // ---- Public directory --------------------------------------------------
+    match /schools/{id} {
+      allow read: if true;
+      allow create, delete: if isUnionAdmin();
+      allow update: if isUnionAdmin() || isSchoolAdmin(id);
+    }
+
+    match /teams/{id} {
+      allow read: if true;
+      allow create: if isUnion() || isSchoolAdmin(request.resource.data.schoolId);
+      allow update, delete: if isUnion() || isSchoolAdmin(resource.data.schoolId);
+    }
+
+    // Private squad list for a team. Holds the over-age cap at database level.
+    match /teamRosters/{teamId} {
+      allow read: if isUnion() || registers(resource.data.schoolId)
+        || isScorerFor([resource.data.schoolId]);
+      allow create, update: if (isUnion() || registers(request.resource.data.schoolId))
+        && request.resource.data.overAgeIds.size() <= settings().maxOverAge;
+      allow delete: if isUnion() || isSchoolAdmin(resource.data.schoolId);
+    }
+
+    // ---- Registration records (private) ------------------------------------
+    match /players/{id} {
+      allow read: if isUnion() || registers(resource.data.schoolId);
+      allow create: if validPersonCreate(request.resource.data) || isUnion();
+      allow update: if isUnion() || validPersonUpdate();
+      allow delete: if isUnionAdmin() || (isSchoolAdmin(resource.data.schoolId) && resource.data.status == 'draft');
+    }
+
+    match /staff/{id} {
+      allow read: if isUnion() || registers(resource.data.schoolId);
+      allow create: if validPersonCreate(request.resource.data) || isUnion();
+      allow update: if isUnion() || validPersonUpdate();
+      allow delete: if isUnionAdmin() || (isSchoolAdmin(resource.data.schoolId) && resource.data.status == 'draft');
+    }
+
+    // Stops one ID number being registered twice. Doc id = SHA-256 of the
+    // normalised ID, so it can be looked up but never listed.
+    match /idRegistry/{hash} {
+      allow get: if isUnion() || hasRole(['school_admin', 'coach', 'manager']);
+      allow list: if false;
+      allow create: if isUnion() || registers(request.resource.data.schoolId);
+      allow delete: if isUnion() || isSchoolAdmin(resource.data.schoolId);
+    }
+
+    // ---- Identity documents (private, most sensitive) ----------------------
+    function ownerDoc(ownerType, ownerId) {
+      return ownerType == 'player' ? get(path('players/' + ownerId)).data : get(path('staff/' + ownerId)).data;
+    }
+    function ownerEditable(d) {
+      return d.ownerType == 'sheet' || ownerDoc(d.ownerType, d.ownerId).status != 'verified';
+    }
+    function ownerMatchesSchool(d) {
+      return d.ownerType == 'sheet' || ownerDoc(d.ownerType, d.ownerId).schoolId == d.schoolId;
+    }
+    function docWritable(d) { return isUnion() || (registers(d.schoolId) && ownerEditable(d)); }
+
+    match /documents/{docId} {
+      // Coaches and managers see that a file exists; bytes are guarded below.
+      allow read: if isUnion() || registers(resource.data.schoolId);
+      allow create: if docWritable(request.resource.data) && ownerMatchesSchool(request.resource.data);
+      allow update: if docWritable(resource.data)
+        && request.resource.data.schoolId == resource.data.schoolId
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.ownerType == resource.data.ownerType;
+      allow delete: if docWritable(resource.data);
+
+      function parent() { return get(path('documents/' + docId)).data; }
+
+      match /chunks/{chunkId} {
+        // ID documents: union + school admin only. Photos and scanned team
+        // sheets: any registration staff at that school.
+        allow read: if isUnion() || isSchoolAdmin(parent().schoolId)
+          || (parent().type in ['photo', 'team_sheet'] && registers(parent().schoolId));
+        allow create, update: if docWritable(parent())
+          && request.resource.data.data is bytes
+          && request.resource.data.data.size() <= 950 * 1024;
+        allow delete: if docWritable(parent());
+      }
+    }
+
+    // ---- Matches (public scoreboard, private discipline and sheets) --------
+    function canScore(schoolIds) {
+      return isUnion() || isScorerFor(schoolIds)
+        || (hasRole(['school_admin', 'coach', 'manager']) && me().schoolId in schoolIds);
+    }
+
+    match /matches/{matchId} {
+      allow read: if true;
+      allow create: if isUnion()
+        || (hasRole(['school_admin', 'coach', 'manager']) && me().schoolId in request.resource.data.schoolIds);
+      allow update: if isUnion() || (canScore(resource.data.schoolIds) && resource.data.status != 'final');
+      allow delete: if isUnionAdmin();
+
+      function theMatch() { return get(path('matches/' + matchId)).data; }
+      function matchOpen() { return theMatch().status != 'final'; }
+
+      // Published scoring only: initial + surname, never DOB, photo or contact.
+      match /events/{id} {
+        allow read: if true;
+        allow create, update, delete: if isUnion()
+          || (canScore(theMatch().schoolIds) && matchOpen());
+      }
+
+      match /cards/{id} {
+        allow read: if isUnion() || isScorerFor(theMatch().schoolIds)
+          || (hasRole(['school_admin', 'coach', 'manager']) && me().schoolId in theMatch().schoolIds);
+        allow create, update, delete: if isUnion()
+          || (canScore(theMatch().schoolIds) && matchOpen());
+      }
+
+      match /sheets/{teamId} {
+        allow read: if isUnion() || isScorerFor(theMatch().schoolIds)
+          || (hasRole(['school_admin', 'coach', 'manager']) && me().schoolId in theMatch().schoolIds);
+        // Union can approve. A school edits its own sheet until approved, and
+        // can never store one above the over-age cap.
+        allow create: if (isUnion() || registers(request.resource.data.schoolId))
+          && request.resource.data.overAgeCount <= settings().maxOverAge
+          && request.resource.data.entries.size() <= 23
+          && (isUnion() || request.resource.data.status in ['draft', 'submitted']);
+        allow update: if isUnion()
+          || (registers(resource.data.schoolId)
+              && resource.data.status in ['draft', 'submitted']
+              && request.resource.data.schoolId == resource.data.schoolId
+              && request.resource.data.status in ['draft', 'submitted']
+              && request.resource.data.overAgeCount <= settings().maxOverAge
+              && request.resource.data.entries.size() <= 23);
+        allow delete: if isUnion() || (registers(resource.data.schoolId) && resource.data.status == 'draft');
+      }
+    }
+  }
+}
