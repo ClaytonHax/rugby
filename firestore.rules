@@ -7,7 +7,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
-    function path(p) { return /databases/$(database)/documents/$(p); }
+    function docPath(p) { return path('/databases/' + database + '/documents/' + p); }
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function active() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().active == true; }
     function hasRole(roles) { return active() && me().role in roles; }
@@ -34,7 +34,7 @@ service cloud.firestore {
       return registers(d.schoolId)
         && d.status in ['draft', 'pending']
         && d.firstName is string && d.lastName is string && d.dob is string
-        && !('verifiedBy' in d) && !('verifiedAt' in d);
+        && !d.keys().hasAny(['verifiedBy', 'verifiedAt', 'registrationNo', 'rejectionReason']);
     }
     function validPersonUpdate() {
       return registers(resource.data.schoolId)
@@ -60,9 +60,9 @@ service cloud.firestore {
         && request.auth.token.email_verified == true
         && request.resource.data.email == request.auth.token.email.lower()
         && request.resource.data.active == true
-        && exists(path('invites/' + request.auth.token.email.lower()))
-        && request.resource.data.role == get(path('invites/' + request.auth.token.email.lower())).data.role
-        && request.resource.data.schoolId == get(path('invites/' + request.auth.token.email.lower())).data.schoolId;
+        && exists(docPath('invites/' + request.auth.token.email.lower()))
+        && request.resource.data.role == get(docPath('invites/' + request.auth.token.email.lower())).data.role
+        && request.resource.data.schoolId == get(docPath('invites/' + request.auth.token.email.lower())).data.schoolId;
       allow update: if isUnionAdmin()
         || (signedIn() && request.auth.uid == uid && changed().hasOnly(['displayName', 'phone']))
         || (isSchoolAdmin(resource.data.schoolId) && resource.data.role != 'school_admin' && changed().hasOnly(['active']));
@@ -95,14 +95,20 @@ service cloud.firestore {
     match /teams/{id} {
       allow read: if true;
       allow create: if isUnion() || isSchoolAdmin(request.resource.data.schoolId);
-      allow update, delete: if isUnion() || isSchoolAdmin(resource.data.schoolId);
+      allow update: if isUnion()
+        || (isSchoolAdmin(resource.data.schoolId) && request.resource.data.schoolId == resource.data.schoolId);
+      allow delete: if isUnion() || isSchoolAdmin(resource.data.schoolId);
     }
 
     // Private squad list for a team. Holds the over-age cap at database level.
     match /teamRosters/{teamId} {
       allow read: if isUnion() || registers(resource.data.schoolId)
         || isScorerFor([resource.data.schoolId]);
-      allow create, update: if (isUnion() || registers(request.resource.data.schoolId))
+      allow create: if (isUnion() || registers(request.resource.data.schoolId))
+        && getAfter(docPath('teams/' + teamId)).data.schoolId == request.resource.data.schoolId
+        && request.resource.data.overAgeIds.size() <= settings().maxOverAge;
+      allow update: if (isUnion() || registers(resource.data.schoolId))
+        && request.resource.data.schoolId == resource.data.schoolId
         && request.resource.data.overAgeIds.size() <= settings().maxOverAge;
       allow delete: if isUnion() || isSchoolAdmin(resource.data.schoolId);
     }
@@ -133,7 +139,7 @@ service cloud.firestore {
 
     // ---- Identity documents (private, most sensitive) ----------------------
     function ownerDoc(ownerType, ownerId) {
-      return ownerType == 'player' ? get(path('players/' + ownerId)).data : get(path('staff/' + ownerId)).data;
+      return ownerType == 'player' ? get(docPath('players/' + ownerId)).data : get(docPath('staff/' + ownerId)).data;
     }
     function ownerEditable(d) {
       return d.ownerType == 'sheet' || ownerDoc(d.ownerType, d.ownerId).status != 'verified';
@@ -146,14 +152,20 @@ service cloud.firestore {
     match /documents/{docId} {
       // Coaches and managers see that a file exists; bytes are guarded below.
       allow read: if isUnion() || registers(resource.data.schoolId);
-      allow create: if docWritable(request.resource.data) && ownerMatchesSchool(request.resource.data);
+      // The id is tied to owner + type and type can never change. Otherwise an
+      // ID document could be relabelled 'photo' to open it to coaches.
+      allow create: if docWritable(request.resource.data) && ownerMatchesSchool(request.resource.data)
+        && docId == request.resource.data.ownerType + '_' + request.resource.data.ownerId + '_' + request.resource.data.type
+        && request.resource.data.ownerType in ['player', 'staff', 'sheet']
+        && (request.resource.data.ownerType == 'sheet') == (request.resource.data.type == 'team_sheet');
       allow update: if docWritable(resource.data)
         && request.resource.data.schoolId == resource.data.schoolId
         && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.ownerType == resource.data.ownerType;
+        && request.resource.data.ownerType == resource.data.ownerType
+        && request.resource.data.type == resource.data.type;
       allow delete: if docWritable(resource.data);
 
-      function parent() { return get(path('documents/' + docId)).data; }
+      function parent() { return get(docPath('documents/' + docId)).data; }
 
       match /chunks/{chunkId} {
         // ID documents: union + school admin only. Photos and scanned team
@@ -177,10 +189,12 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isUnion()
         || (hasRole(['school_admin', 'coach', 'manager']) && me().schoolId in request.resource.data.schoolIds);
-      allow update: if isUnion() || (canScore(resource.data.schoolIds) && resource.data.status != 'final');
+      allow update: if isUnion()
+        || (canScore(resource.data.schoolIds) && resource.data.status != 'final'
+            && request.resource.data.schoolIds == resource.data.schoolIds);
       allow delete: if isUnionAdmin();
 
-      function theMatch() { return get(path('matches/' + matchId)).data; }
+      function theMatch() { return get(docPath('matches/' + matchId)).data; }
       function matchOpen() { return theMatch().status != 'final'; }
 
       // Published scoring only: initial + surname, never DOB, photo or contact.
@@ -203,16 +217,20 @@ service cloud.firestore {
         // Union can approve. A school edits its own sheet until approved, and
         // can never store one above the over-age cap.
         allow create: if (isUnion() || registers(request.resource.data.schoolId))
+          && request.resource.data.schoolId in theMatch().schoolIds
+          && teamId in [theMatch().homeTeamId, theMatch().awayTeamId]
+          && get(docPath('teams/' + teamId)).data.schoolId == request.resource.data.schoolId
           && request.resource.data.overAgeCount <= settings().maxOverAge
           && request.resource.data.entries.size() <= 23
           && (isUnion() || request.resource.data.status in ['draft', 'submitted']);
-        allow update: if isUnion()
-          || (registers(resource.data.schoolId)
-              && resource.data.status in ['draft', 'submitted']
-              && request.resource.data.schoolId == resource.data.schoolId
-              && request.resource.data.status in ['draft', 'submitted']
-              && request.resource.data.overAgeCount <= settings().maxOverAge
-              && request.resource.data.entries.size() <= 23);
+        // The cap binds everyone, union included.
+        allow update: if request.resource.data.schoolId == resource.data.schoolId
+          && request.resource.data.overAgeCount <= settings().maxOverAge
+          && request.resource.data.entries.size() <= 23
+          && (isUnion()
+              || (registers(resource.data.schoolId)
+                  && resource.data.status in ['draft', 'submitted']
+                  && request.resource.data.status in ['draft', 'submitted']));
         allow delete: if isUnion() || (registers(resource.data.schoolId) && resource.data.status == 'draft');
       }
     }
