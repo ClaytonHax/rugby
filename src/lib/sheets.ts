@@ -1,6 +1,6 @@
 import { doc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { writeAudit } from './data';
+import { confirmWrite, writeAudit } from './data';
 import { isOverAge } from './eligibility';
 import type { CompetitionSettings, Match, Player, SheetEntry, TeamSheet } from './types';
 
@@ -180,7 +180,7 @@ export interface SheetDraftInput {
 }
 
 /** Saves the sheet as draft, or as submitted when `submit` is true (caller must have validated). */
-export async function saveSheet(input: SheetDraftInput, submit: boolean): Promise<void> {
+export async function saveSheet(input: SheetDraftInput, submit: boolean): Promise<'saved' | 'queued'> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('You are signed out.');
   const entries = [...input.entries].sort((a, b) => a.jersey - b.jersey);
@@ -195,30 +195,32 @@ export async function saveSheet(input: SheetDraftInput, submit: boolean): Promis
     ...(input.scanDocId ? { scanDocId: input.scanDocId } : {}),
     ...(submit ? { submittedBy: uid, submittedAt: serverTimestamp() } : {}),
   };
-  await setDoc(sheetRef(input.match.id, input.teamId), data);
+  const outcome = await confirmWrite(setDoc(sheetRef(input.match.id, input.teamId), data));
   if (submit) void writeAudit('sheet.submitted', 'sheet', sheetOwnerId(input.match.id, input.teamId), `${entries.length} players, ${input.overAgeCount} over-age`).catch(() => undefined);
+  return outcome;
 }
 
-async function review(sheet: TeamSheet, status: 'approved' | 'rejected' | 'draft', note: string, action: string): Promise<void> {
+async function review(sheet: TeamSheet, status: 'approved' | 'rejected' | 'draft', note: string, action: string): Promise<'saved' | 'queued'> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('You are signed out.');
-  await updateDoc(sheetRef(sheet.matchId, sheet.teamId), {
+  const outcome = await confirmWrite(updateDoc(sheetRef(sheet.matchId, sheet.teamId), {
     status,
     reviewNote: note,
     reviewedBy: uid,
     reviewedAt: serverTimestamp(),
-  });
+  }));
   void writeAudit(action, 'sheet', sheetOwnerId(sheet.matchId, sheet.teamId), note || undefined).catch(() => undefined);
+  return outcome;
 }
 
-export function approveSheet(sheet: TeamSheet, note = ''): Promise<void> {
+export function approveSheet(sheet: TeamSheet, note = ''): Promise<'saved' | 'queued'> {
   return review(sheet, 'approved', note, 'sheet.approved');
 }
-export function rejectSheet(sheet: TeamSheet, note: string): Promise<void> {
+export async function rejectSheet(sheet: TeamSheet, note: string): Promise<'saved' | 'queued'> {
   if (!note.trim()) throw new Error('A reason is required when rejecting a sheet.');
   return review(sheet, 'rejected', note.trim(), 'sheet.rejected');
 }
 /** Registrar action: lets the school edit a rejected (or approved) sheet again. */
-export function returnSheetToDraft(sheet: TeamSheet, note = ''): Promise<void> {
+export function returnSheetToDraft(sheet: TeamSheet, note = ''): Promise<'saved' | 'queued'> {
   return review(sheet, 'draft', note, 'sheet.returned_to_draft');
 }

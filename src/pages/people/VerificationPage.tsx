@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { collection, query, where, type Query } from 'firebase/firestore';
 import { ArrowLeft, ClipboardCheck } from 'lucide-react';
-import { Button, EmptyState, PageHeader, Select, SkeletonList } from '../../components/ui';
+import { Button, EmptyState, ErrorState, PageHeader, Select, SkeletonList } from '../../components/ui';
 import { PersonCard } from '../../components/people/PersonCard';
 import { PersonDetail } from '../../components/people/PersonDetail';
 import { useSchoolScope } from '../../components/people/useSchoolScope';
@@ -43,12 +43,12 @@ export default function VerificationPage() {
 
   return (
     <div>
-      <PageHeader title="Verification queue" subtitle={`${items.length} waiting`} />
+      <PageHeader title="Verification queue" subtitle={loading ? undefined : `${items.length} waiting`} />
       <div className="mb-4 max-w-xs">
         <Select label="School" value={pick} onChange={(e) => { setPick(e.target.value); setSelected(null); }} placeholder="All schools"
           options={schools.data.map((s) => ({ value: s.id, label: s.name }))} />
       </div>
-      {loading ? <SkeletonList /> : error ? <EmptyState title="Could not load the queue" description={error} /> : items.length === 0 ? (
+      {loading ? <SkeletonList /> : error ? <ErrorState title="Could not load the queue" description={error} onRetry={() => { players.retry(); staff.retry(); }} /> : items.length === 0 ? (
         <EmptyState icon={<ClipboardCheck className="size-8" />} title="Nothing to verify" description="New submissions from schools will appear here, oldest first." />
       ) : (
         <div className="grid gap-5 lg:grid-cols-[22rem_1fr]">
@@ -63,7 +63,7 @@ export default function VerificationPage() {
           <div className={selected ? '' : 'hidden lg:block'}>
             {selected ? (
               <>
-                <Button variant="ghost" className="mb-2 lg:hidden" icon={<ArrowLeft className="size-4" />} onClick={() => setSelected(null)}>Back to queue</Button>
+                <Button variant="ghost" className="mb-2 lg:hidden" icon={<ArrowLeft className="size-4" />} onClick={() => { setSelected(null); window.scrollTo({ top: 0 }); }}>Back to queue</Button>
                 <PersonDetail key={selected.id} kind={selected.kind} id={selected.id} review onActed={afterAction} />
               </>
             ) : <EmptyState title="Choose a record" description="Select someone from the queue to compare their photo and ID document with the details." />}

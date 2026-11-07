@@ -4,7 +4,7 @@ import {
   writeBatch, type Query,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { writeAudit } from './data';
+import { confirmWrite, writeAudit } from './data';
 import { deleteDocument, docId } from './documents';
 import type {
   DocType, IdType, Player, RecordStatus, Role, Staff, StaffRole,
@@ -200,7 +200,7 @@ export async function updatePerson(kind: PersonKind, before: AnyPerson, patch: P
   }
 
   if (!idChanged) {
-    await updateDoc(personRef, update);
+    await confirmWrite(updateDoc(personRef, update));
     return;
   }
   const oldRef = doc(db, 'idRegistry', await idHash(before.idType, before.idNumber));
@@ -234,7 +234,7 @@ export async function deleteDraftPerson(kind: PersonKind, p: AnyPerson): Promise
   const batch = writeBatch(db);
   batch.delete(doc(db, 'idRegistry', await idHash(p.idType, p.idNumber)));
   batch.delete(doc(db, collectionName(kind), p.id));
-  await batch.commit();
+  await confirmWrite(batch.commit());
   await writeAudit(`${kind}.deleted`, kind, p.id, `Draft deleted: ${personName(p)}`);
 }
 
@@ -275,11 +275,11 @@ export async function submitForVerification(kind: PersonKind, id: string): Promi
   if (p.status !== 'draft' && p.status !== 'rejected') throw new Error('This record has already been submitted.');
   const missing = missingForSubmission(kind, p);
   if (missing.length) throw new Error(`Still needed: ${missing.join(', ')}.`);
-  await updateDoc(doc(db, collectionName(kind), id), {
+  await confirmWrite(updateDoc(doc(db, collectionName(kind), id), {
     status: 'pending',
     rejectionReason: deleteField(),
     updatedAt: serverTimestamp(),
-  });
+  }));
   await writeAudit(`${kind}.submitted`, kind, id, personName(p));
 }
 

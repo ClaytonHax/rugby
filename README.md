@@ -31,7 +31,7 @@ Other scripts: `npm run build` (type-check and production build), `npm run lint`
 - **Scorer:** records match events for an assigned school, or all schools if none is set.
 - **Public:** fixtures, results, standings, school directory and match pages. No personal data.
 
-Access is by invitation only. An admin creates an invite for an email address, and the invitee signs up and verifies that email.
+Access is by invitation only. An admin creates an invite for an email address, and the invitee signs up with that address and goes straight in. There is no email verification step; email ownership is not checked.
 
 ## Data privacy
 

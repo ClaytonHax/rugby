@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { doc } from 'firebase/firestore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Lock, Save, Send } from 'lucide-react';
-import { Button, Card, EmptyState, Input, PageHeader, Select, SkeletonList, useToast } from '../ui';
+import { Button, Card, EmptyState, ErrorState, Input, PageHeader, Select, SkeletonList, useFocusFirstInvalid, useToast } from '../ui';
 import { db } from '../../lib/firebase';
-import { useDoc } from '../../lib/data';
+import { friendlyError, useDoc } from '../../lib/data';
 import { useOwnerDocuments } from '../../lib/documents';
 import { todayISO } from '../../lib/eligibility';
 import {
@@ -93,6 +93,8 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const hydrated = useRef(false);
+  const [invalidTick, setInvalidTick] = useState(0);
+  useFocusFirstInvalid(invalidTick);
 
   const mySchool = appUser?.schoolId ?? '';
   useEffect(() => {
@@ -110,12 +112,13 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
 
   if (!appUser) return <SkeletonList rows={3} />;
   if (recordId && existing.loading) return <SkeletonList rows={4} />;
-  if (recordId && (existing.error || !rec)) {
-    return <EmptyState title="Could not open this record" description={existing.error ?? 'It may have been deleted, or it belongs to another school.'} />;
+  if (recordId && existing.error) return <ErrorState page title="Could not open this record" description={existing.error} onRetry={existing.retry} />;
+  if (recordId && !rec) {
+    return <EmptyState page title="Record not found" description="It may have been deleted, or it belongs to another school." />;
   }
   const listPath = kind === 'player' ? '/app/players' : '/app/staff';
   if (rec && rec.status === 'suspended' && !union) {
-    return <EmptyState title="This record is suspended" description="Contact the registrar to be reinstated before making changes." />;
+    return <EmptyState page title="This record is suspended" description="Contact the registrar to be reinstated before making changes." />;
   }
 
   const verifiedLocked = !!rec && rec.status === 'verified' && !union;
@@ -139,7 +142,7 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
     setFormError(null);
     if (key === 'details') {
       const e = validateDetails(f, kind, !rec && union);
-      if (Object.keys(e).length) { setErrors(e); return false; }
+      if (Object.keys(e).length) { setErrors(e); setInvalidTick((n) => n + 1); return false; }
       const school = schools.byId[rec?.schoolId ?? f.schoolId];
       const identity = {
         firstName: f.firstName.trim(), lastName: f.lastName.trim(), dob: f.dob, idType: f.idType, idNumber: f.idNumber.trim(),
@@ -152,6 +155,7 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
             ? { ...core, position: f.position, secondaryPosition: f.secondaryPosition, guardianName: '', guardianPhone: '', consentGiven: false }
             : { ...core, staffRole: f.staffRole as StaffRole, phone: f.phone.trim(), email: f.email, qualification: f.qualification };
           const id = await createPerson(kind, input);
+          hydrated.current = true; // the form already holds this data; do not overwrite it when the new record arrives
           setParams({ id }, { replace: true });
           toast.success('Draft saved.');
         } else {
@@ -165,13 +169,13 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
         return true;
       } catch (err) {
         if (err instanceof DuplicateIdError) setErrors({ idNumber: err.message });
-        else setFormError(err instanceof Error ? err.message : 'Could not save. Try again.');
+        else setFormError(friendlyError(err, 'Could not save. Try again.'));
         return false;
       }
     }
     if (key === 'guardian') {
       const e = validateGuardian(f);
-      if (Object.keys(e).length) { setErrors(e); return false; }
+      if (Object.keys(e).length) { setErrors(e); setInvalidTick((n) => n + 1); return false; }
       if (!rec) { setFormError('Still saving the draft. Wait a moment and try again.'); return false; }
       try {
         await updatePerson(kind, rec, {
@@ -179,14 +183,16 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
         });
         return true;
       } catch (err) {
-        setFormError(err instanceof Error ? err.message : 'Could not save. Try again.');
+        setFormError(friendlyError(err, 'Could not save. Try again.'));
         return false;
       }
     }
     return true;
   }
 
-  async function next() {
+  async function next(e?: FormEvent) {
+    e?.preventDefault();
+    if (busy || key === 'submit') return;
     setBusy(true);
     try {
       if (await saveStep()) go(step + 1);
@@ -200,14 +206,15 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
       if (key === 'guardian') {
         // Partial guardian details are fine in a draft; consent is only enforced on submit.
         if (rec) await updatePerson(kind, rec, { guardianName: f.guardianName.trim(), guardianPhone: f.guardianPhone.trim(), guardianEmail: f.guardianEmail, consentGiven: f.consent });
+        toast.success('Draft saved.');
         navigate(recordId ? `${listPath}/${recordId}` : listPath);
       } else if (key === 'details') {
-        if (await saveStep()) navigate(`${listPath}`);
+        if (await saveStep()) { toast.success('Draft saved.'); navigate(`${listPath}`); }
       } else {
         navigate(recordId ? `${listPath}/${recordId}` : listPath);
       }
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Could not save. Try again.');
+      setFormError(friendlyError(err, 'Could not save. Try again.'));
     } finally {
       setBusy(false);
     }
@@ -220,7 +227,7 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
       toast.success('Submitted. A registrar will check it.');
       navigate(`${listPath}/${recordId}`);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Could not submit.');
+      setFormError(friendlyError(err, 'Could not submit. Try again.'));
     } finally {
       setBusy(false);
     }
@@ -231,7 +238,8 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title={rec ? `Edit ${noun}` : `Register a ${noun}`} backTo={recordId ? `${listPath}/${recordId}` : listPath}
+      <PageHeader title={rec ? `Edit ${noun}` : `Register a ${noun}`} backTo={recordId ? `${listPath}/${recordId}` : listPath} backLabel={recordId ? 'Back to the record' : kind === 'player' ? 'Back to players' : 'Back to staff'}
+        documentTitle={rec ? `Edit ${noun}` : `Register a ${noun}`}
         subtitle={rec ? `${rec.firstName} ${rec.lastName}` : undefined} />
       <Stepper steps={steps.map((s) => labels[s])} current={step} maxReached={maxReached} onSelect={(i) => { if (i <= step || rec) go(i); }} />
 
@@ -248,6 +256,8 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
       )}
 
       <Card>
+       <form onSubmit={(e) => void next(e)} noValidate>
+        <h2 className="sr-only">Step {step + 1} of {steps.length}: {labels[key]}</h2>
         {key === 'details' && (
           <div className="grid gap-4 sm:grid-cols-2">
             {union && !rec && (
@@ -255,8 +265,8 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
                 onChange={(e) => set('schoolId', e.target.value)} placeholder="Choose a school"
                 options={schools.data.map((s) => ({ value: s.id, label: s.name }))} />
             )}
-            <Input label="First name" required autoComplete="off" value={f.firstName} error={errors.firstName} disabled={verifiedLocked} onChange={(e) => set('firstName', e.target.value)} />
-            <Input label="Last name" required autoComplete="off" value={f.lastName} error={errors.lastName} disabled={verifiedLocked} onChange={(e) => set('lastName', e.target.value)} />
+            <Input label="First name" required autoComplete="off" autoCapitalize="words" value={f.firstName} error={errors.firstName} disabled={verifiedLocked} onChange={(e) => set('firstName', e.target.value)} />
+            <Input label="Last name" required autoComplete="off" autoCapitalize="words" value={f.lastName} error={errors.lastName} disabled={verifiedLocked} onChange={(e) => set('lastName', e.target.value)} />
             <Input label="Date of birth" type="date" required max={todayISO()} value={f.dob} error={errors.dob} disabled={verifiedLocked} onChange={(e) => set('dob', e.target.value)} />
             <Select label="ID document type" required value={f.idType} disabled={idLocked}
               onChange={(e) => set('idType', e.target.value as IdType)}
@@ -276,8 +286,8 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
                 <Select label="Role" required value={f.staffRole} error={errors.staffRole} placeholder="Choose a role"
                   onChange={(e) => set('staffRole', e.target.value as StaffRole)}
                   options={(Object.keys(STAFF_ROLE_LABELS) as StaffRole[]).map((r) => ({ value: r, label: STAFF_ROLE_LABELS[r] }))} />
-                <Input label="Phone" type="tel" inputMode="tel" required value={f.phone} error={errors.phone} onChange={(e) => set('phone', e.target.value)} />
-                <Input label="Email" type="email" value={f.email} error={errors.email} onChange={(e) => set('email', e.target.value)} />
+                <Input label="Phone" type="tel" inputMode="tel" autoComplete="tel" required value={f.phone} error={errors.phone} onChange={(e) => set('phone', e.target.value)} />
+                <Input label="Email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={f.email} error={errors.email} onChange={(e) => set('email', e.target.value)} />
                 <Input label="Qualification" value={f.qualification} hint="For example World Rugby coaching level or first-aid certificate." onChange={(e) => set('qualification', e.target.value)} />
               </>
             )}
@@ -286,18 +296,19 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
 
         {key === 'guardian' && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Input label="Parent or guardian name" required autoComplete="off" value={f.guardianName} error={errors.guardianName} onChange={(e) => set('guardianName', e.target.value)} />
-            <Input label="Guardian phone" type="tel" inputMode="tel" required value={f.guardianPhone} error={errors.guardianPhone} onChange={(e) => set('guardianPhone', e.target.value)} />
-            <Input wrapperClassName="sm:col-span-2" label="Guardian email" type="email" value={f.guardianEmail} error={errors.guardianEmail} onChange={(e) => set('guardianEmail', e.target.value)} />
+            <Input label="Parent or guardian name" required autoComplete="off" autoCapitalize="words" value={f.guardianName} error={errors.guardianName} onChange={(e) => set('guardianName', e.target.value)} />
+            <Input label="Guardian phone" type="tel" inputMode="tel" autoComplete="off" required value={f.guardianPhone} error={errors.guardianPhone} onChange={(e) => set('guardianPhone', e.target.value)} />
+            <Input wrapperClassName="sm:col-span-2" label="Guardian email" type="email" autoComplete="off" autoCapitalize="none" spellCheck={false} value={f.guardianEmail} error={errors.guardianEmail} onChange={(e) => set('guardianEmail', e.target.value)} />
             <div className="sm:col-span-2">
               <label className="flex min-h-11 items-start gap-3 rounded-lg border border-line bg-chalk p-3">
-                <input type="checkbox" className="mt-1 size-5 shrink-0 accent-pitch" checked={f.consent} onChange={(e) => set('consent', e.target.checked)} />
+                <input type="checkbox" className="mt-1 size-5 shrink-0 accent-pitch" checked={f.consent} onChange={(e) => set('consent', e.target.checked)}
+                  aria-invalid={!!errors.consent} aria-describedby={errors.consent ? 'consent-error' : undefined} />
                 <span className="text-sm text-ink">
                   The parent or guardian has agreed that this player's name, date of birth, photo and identity document are stored for school
                   rugby registration, are visible only to authorised school and union staff, and that only initial and surname appear publicly on match scoring.
                 </span>
               </label>
-              {errors.consent && <p role="alert" className="mt-1 text-xs font-medium text-danger">{errors.consent}</p>}
+              {errors.consent && <p id="consent-error" role="alert" className="mt-1 text-xs font-medium text-danger">{errors.consent}</p>}
             </div>
           </div>
         )}
@@ -346,7 +357,7 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
               <Button variant="secondary" icon={<Save className="size-4" />} disabled={busy} onClick={() => void saveAndExit()}>Save draft</Button>
             )}
             {key !== 'submit' ? (
-              <Button loading={busy} onClick={() => void next()}>Next <ArrowRight className="size-4" aria-hidden /></Button>
+              <Button type="submit" loading={busy}>Next <ArrowRight className="size-4" aria-hidden /></Button>
             ) : rec && (rec.status === 'draft' || rec.status === 'rejected') ? (
               <Button icon={<Send className="size-4" />} loading={busy} disabled={missing.length > 0} onClick={() => void submit()}>Submit for verification</Button>
             ) : (
@@ -354,6 +365,7 @@ export function RegistrationForm({ kind }: { kind: PersonKind }) {
             )}
           </div>
         </div>
+       </form>
       </Card>
     </div>
   );

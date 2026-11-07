@@ -1,14 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { collection, doc, query, where } from 'firebase/firestore';
-import { CloudOff, Flag, RotateCcw, Square } from 'lucide-react';
+import { Check, CloudOff, Flag, RotateCcw, Square } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { useCollection, useDoc } from '../../lib/data';
+import { friendlyError, useCollection, useDoc } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
 import { publicName } from '../../lib/eligibility';
 import { addCard, addScoreEvent, deleteScoreEvent, setStatus } from '../../lib/matches';
 import { SCORE_POINTS, type CardEvent, type Match, type Player, type ScoreEvent, type ScoreType, type TeamRoster, type TeamSheet } from '../../lib/types';
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Input, Modal, SkeletonList, useToast } from '../../components/ui';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, Modal, SkeletonList, useDocumentTitle, useFocusFirstInvalid, useToast } from '../../components/ui';
 
 interface Option {
   id: string | null;
@@ -86,12 +86,15 @@ export default function ScorePage() {
   const [action, setAction] = useState<{ type: ScoreType; teamId: string } | null>(null);
   const [cardOpen, setCardOpen] = useState(false);
   const [finalOpen, setFinalOpen] = useState(false);
+  const [undoOpen, setUndoOpen] = useState(false);
 
   const sorted = useMemo(() => [...events.data].sort((a, b) => millis(a) - millis(b)), [events.data]);
   const last = sorted[sorted.length - 1];
+  useDocumentTitle(m ? `Scoring ${m.homeName} v ${m.awayName}` : null);
 
   if (match.loading) return <SkeletonList />;
-  if (!m) return <EmptyState title="Match not found" description={match.error ?? undefined} />;
+  if (match.error) return <ErrorState page title="Could not open this match" description={match.error} onRetry={match.retry} />;
+  if (!m) return <EmptyState page title="Match not found" description="It may have been removed." />;
   const role = appUser?.role;
   const unionLevel = role === 'union_admin' || role === 'registrar';
   const mayScore = unionLevel
@@ -103,9 +106,10 @@ export default function ScorePage() {
   const names = { [m.homeTeamId]: m.homeName, [m.awayTeamId]: m.awayName } as Record<string, string>;
 
   /** Fire-and-forget: Firestore applies it locally at once and syncs when there is signal. */
-  function track(p: Promise<unknown>, failMsg: string) {
+  function track(write: () => Promise<unknown>, failMsg: string) {
     setPendingWrites((n) => n + 1);
-    p.catch((e: unknown) => toast.error(e instanceof Error && e.message ? `${failMsg} ${e.message}` : failMsg))
+    Promise.resolve().then(write)
+      .catch((e: unknown) => toast.error(`${failMsg} ${friendlyError(e, '')}`.trim()))
       .finally(() => setPendingWrites((n) => n - 1));
   }
 
@@ -113,6 +117,7 @@ export default function ScorePage() {
 
   return (
     <div>
+      <h1 className="sr-only">Scoring: {m.homeName} v {m.awayName}</h1>
       <div className="sticky top-0 z-20 -mx-4 mb-4 border-b border-line bg-pitch px-4 py-3 text-white md:mx-0 md:rounded-xl">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center">
           <span className="truncate text-sm font-semibold">{m.homeName}</span>
@@ -123,8 +128,8 @@ export default function ScorePage() {
           {m.status === 'live' && <Badge tone="red">Live</Badge>}
           {m.status === 'final' && <Badge>Full time</Badge>}
           {m.status === 'cancelled' && <Badge tone="amber">Cancelled</Badge>}
-          {pendingWrites > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-gold px-2 py-0.5 font-semibold text-ink"><CloudOff className="size-3" aria-hidden />Saving {pendingWrites}... will sync when online</span>}
-          <Link to={`/app/matches/${m.id}`} className="underline">Match page</Link>
+          {pendingWrites > 0 && <span role="status" className="inline-flex items-center gap-1 rounded-full bg-gold px-2 py-0.5 font-semibold text-ink"><CloudOff className="size-3" aria-hidden />Saving {pendingWrites}... will sync when online</span>}
+          <Link to={`/app/matches/${m.id}`} className="inline-flex min-h-11 items-center underline">Match page</Link>
         </div>
       </div>
 
@@ -140,7 +145,7 @@ export default function ScorePage() {
           <div className="grid grid-cols-2 gap-3">
             {ACTIONS.map((a) => (
               <button key={a.type} type="button" disabled={!open} onClick={() => setAction({ type: a.type, teamId: tid })}
-                className={`flex min-h-16 flex-col items-center justify-center rounded-xl bg-pitch text-white active:bg-pitch-dark disabled:opacity-40 ${a.type === 'penalty_try' ? 'col-span-2 bg-ink' : ''}`}>
+                className={`flex min-h-16 flex-col items-center justify-center rounded-xl text-white disabled:opacity-40 ${a.type === 'penalty_try' ? 'col-span-2 bg-ink active:bg-black' : 'bg-pitch active:bg-pitch-dark'}`}>
                 <span className="text-lg font-bold">{a.label}</span>
                 <span className="text-xs opacity-80">+{SCORE_POINTS[a.type]}</span>
               </button>
@@ -151,11 +156,7 @@ export default function ScorePage() {
 
       <div className="mb-4 grid grid-cols-2 gap-3">
         <Button variant="secondary" className="min-h-14" icon={<RotateCcw className="size-4" />} disabled={!open || !last}
-          onClick={() => {
-            if (!last) return;
-            track(deleteScoreEvent(m, events.data, last.id), 'Could not undo.');
-            toast.toast(`Undid ${LABEL[last.type]} (${last.playerDisplay}).`);
-          }}>Undo last</Button>
+          onClick={() => setUndoOpen(true)}>Undo last</Button>
         <Button variant="secondary" className="min-h-14" icon={<Square className="size-4 text-gold-dark" />} disabled={!open || m.status === 'final'} onClick={() => setCardOpen(true)}>Card</Button>
       </div>
 
@@ -182,36 +183,48 @@ export default function ScorePage() {
         action={action} side={action ? sides[action.teamId] : undefined} teamName={action ? names[action.teamId] : ''}
         defaultMinute={defaultMinute} onClose={() => setAction(null)}
         onSave={(input) => {
-          track(addScoreEvent(m, events.data, input), 'Score not saved yet.');
+          track(() => addScoreEvent(m, events.data, input), 'Score not saved yet.');
           setAction(null);
         }} />
 
-      <CardModal key={`${cardOpen}-${defaultMinute}`} open={cardOpen} onClose={() => setCardOpen(false)} match={m} sides={sides} names={names} defaultMinute={defaultMinute}
-        onSave={(input) => { track(addCard(m.id, input), 'Card not saved.'); setCardOpen(false); }} />
+      <CardModal key={String(cardOpen)} open={cardOpen} onClose={() => setCardOpen(false)} match={m} sides={sides} names={names} defaultMinute={defaultMinute}
+        onSave={(input) => { track(() => addCard(m.id, input), 'Card not saved.'); setCardOpen(false); }} />
+
+      <ConfirmDialog open={undoOpen} title="Undo the last event?" tone="danger" confirmLabel="Undo" cancelLabel="Keep it"
+        message={last ? <>{LABEL[last.type]} by <strong>{last.playerDisplay}</strong> for {names[last.teamId]} ({last.minute}') will be removed and the score recalculated.</> : ''}
+        onCancel={() => setUndoOpen(false)}
+        onConfirm={() => {
+          setUndoOpen(false);
+          if (!last) return;
+          track(() => deleteScoreEvent(m, events.data, last.id), 'Could not undo.');
+          toast.toast(`Undid ${LABEL[last.type]} (${last.playerDisplay}).`);
+        }} />
 
       <ConfirmDialog open={finalOpen} title="Mark match as final?"
         message={<>Final score <strong>{m.homeName} {m.homeScore} - {m.awayScore} {m.awayName}</strong>. After this only the union can change the result, and the result counts on the log.</>}
         confirmLabel="Mark final" onCancel={() => setFinalOpen(false)}
-        onConfirm={() => { setFinalOpen(false); track(setStatus(m, 'final'), 'Could not mark final.'); }} />
+        onConfirm={() => { setFinalOpen(false); track(() => setStatus(m, 'final'), 'Could not mark final.'); }} />
     </div>
   );
 }
 
-function PlayerPicker({ side, selected, onSelect, typed, onType }: {
-  side: Side | undefined; selected: Option | null; onSelect: (o: Option | null) => void; typed: string; onType: (v: string) => void;
+function PlayerPicker({ side, selected, onSelect, typed, onType, error }: {
+  side: Side | undefined; selected: Option | null; onSelect: (o: Option | null) => void; typed: string; onType: (v: string) => void; error?: string | null;
 }) {
   return (
     <div className="flex flex-col gap-3">
       {side && side.options.length > 0 && (
         <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto">
           {side.options.map((o) => (
-            <button key={o.id ?? o.label} type="button" onClick={() => { onSelect(o); onType(''); }}
-              className={`min-h-12 rounded-lg border-2 px-2 text-left text-sm font-semibold ${selected?.id === o.id ? 'border-pitch bg-pitch-50' : 'border-line bg-white'}`}>{o.label}</button>
+            <button key={o.id ?? o.label} type="button" onClick={() => { onSelect(o); onType(''); }} aria-pressed={selected?.id === o.id}
+              className={`flex min-h-12 items-center justify-between gap-1 rounded-lg border-2 px-2 text-left text-sm font-semibold ${selected?.id === o.id ? 'border-pitch bg-pitch-50' : 'border-line bg-white'}`}>
+              <span className="min-w-0 break-words">{o.label}</span>{selected?.id === o.id && <Check className="size-4 shrink-0 text-pitch" aria-hidden />}
+            </button>
           ))}
         </div>
       )}
       {side?.source === 'none' && <p className="text-xs text-ink-soft">No team sheet or squad is available to you, so type the player's name.</p>}
-      <Input label={side && side.options.length > 0 ? 'Or type a name' : 'Player name'} value={typed} placeholder="First and last name"
+      <Input label={side && side.options.length > 0 ? 'Or type a name' : 'Player name'} value={typed} placeholder="First and last name" autoComplete="off" autoCapitalize="words" error={error}
         onChange={(e) => { onType(e.target.value); onSelect(null); }} />
     </div>
   );
@@ -225,28 +238,35 @@ function ScoreModal({ action, side, teamName, defaultMinute, onClose, onSave }: 
   const [selected, setSelected] = useState<Option | null>(null);
   const [typed, setTyped] = useState('');
   const [minute, setMinute] = useState(defaultMinute);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ minute?: string; player?: string }>({});
+  const [tick, setTick] = useState(0);
+  useFocusFirstInvalid(tick);
   if (!action) return null;
   const penaltyTry = action.type === 'penalty_try';
 
-  function save() {
+  function save(e?: FormEvent) {
+    e?.preventDefault();
     if (!action) return;
     const min = Number(minute);
-    if (minute.trim() === '' || !Number.isInteger(min) || min < 0 || min > 140) { setError('Enter the minute, from 0 to 140.'); return; }
+    const bad: { minute?: string; player?: string } = {};
+    if (minute.trim() === '' || !Number.isInteger(min) || min < 0 || min > 140) bad.minute = 'Enter the minute, from 0 to 140.';
+    if (!penaltyTry && !selected && typed.trim().length < 2) bad.player = 'Pick a player or type a name.';
+    if (bad.minute || bad.player) { setErrors(bad); setTick((n) => n + 1); return; }
     if (penaltyTry) { onSave({ type: action.type, teamId: action.teamId, playerId: null, playerDisplay: 'Penalty try', minute: min }); return; }
     if (selected) { onSave({ type: action.type, teamId: action.teamId, playerId: selected.id, playerDisplay: selected.display, minute: min }); return; }
-    if (typed.trim().length < 2) { setError('Pick a player or type a name.'); return; }
     onSave({ type: action.type, teamId: action.teamId, playerId: null, playerDisplay: displayFromFullName(typed), minute: min });
   }
 
   return (
-    <Modal open onClose={onClose} title={`${LABEL[action.type]} · ${teamName}`}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="gold" className="min-w-32" onClick={save}>Record +{SCORE_POINTS[action.type]}</Button></>}>
-      <div className="flex flex-col gap-4">
-        <Input label="Minute" type="number" inputMode="numeric" min={0} max={140} value={minute} onChange={(e) => setMinute(e.target.value)} autoFocus={penaltyTry} />
-        {!penaltyTry && <PlayerPicker side={side} selected={selected} onSelect={setSelected} typed={typed} onType={setTyped} />}
-        {error && <p role="alert" className="text-sm font-medium text-danger">{error}</p>}
-      </div>
+    <Modal open onClose={onClose} title={`${LABEL[action.type]} · ${teamName}`} focusFirstField={false}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="gold" className="min-w-32" type="submit" form="score-form">Record +{SCORE_POINTS[action.type]}</Button></>}>
+      <form id="score-form" onSubmit={save} noValidate className="flex flex-col gap-4">
+        <Input label="Minute" type="number" inputMode="numeric" min={0} max={140} value={minute} error={errors.minute}
+          onChange={(e) => { setMinute(e.target.value); setErrors((x) => ({ ...x, minute: undefined })); }} />
+        {!penaltyTry && <PlayerPicker side={side} selected={selected} error={errors.player}
+          onSelect={(o) => { setSelected(o); setErrors((x) => ({ ...x, player: undefined })); }} typed={typed}
+          onType={(v) => { setTyped(v); if (v) setErrors((x) => ({ ...x, player: undefined })); }} />}
+      </form>
     </Modal>
   );
 }
@@ -261,36 +281,43 @@ function CardModal({ open, onClose, match, sides, names, defaultMinute, onSave }
   const [typed, setTyped] = useState('');
   const [minute, setMinute] = useState(defaultMinute);
   const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ minute?: string; player?: string }>({});
+  const [tick, setTick] = useState(0);
+  useFocusFirstInvalid(tick);
 
-  function save() {
+  function save(e?: FormEvent) {
+    e?.preventDefault();
     const min = Number(minute);
-    if (minute.trim() === '' || !Number.isInteger(min) || min < 0 || min > 140) { setError('Enter the minute, from 0 to 140.'); return; }
     const playerName = selected ? selected.label.replace(/^\d+\s+/, '') : typed.trim();
-    if (playerName.length < 2) { setError('Pick a player or type a name.'); return; }
+    const bad: { minute?: string; player?: string } = {};
+    if (minute.trim() === '' || !Number.isInteger(min) || min < 0 || min > 140) bad.minute = 'Enter the minute, from 0 to 140.';
+    if (playerName.length < 2) bad.player = 'Pick a player or type a name.';
+    if (bad.minute || bad.player) { setErrors(bad); setTick((n) => n + 1); return; }
     onSave({ type, teamId, playerId: selected?.id ?? '', playerName, minute: min, notes });
-    setSelected(null); setTyped(''); setNotes(''); setError(null);
+    setSelected(null); setTyped(''); setNotes(''); setErrors({});
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Record a card"
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save}>Record card</Button></>}>
-      <div className="flex flex-col gap-4">
+    <Modal open={open} onClose={onClose} title="Record a card" focusFirstField={false}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="card-form">Record card</Button></>}>
+      <form id="card-form" onSubmit={save} noValidate className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-2">
           {[match.homeTeamId, match.awayTeamId].map((tid) => (
-            <button key={tid} type="button" onClick={() => { setTeamId(tid); setSelected(null); }}
+            <button key={tid} type="button" onClick={() => { setTeamId(tid); setSelected(null); }} aria-pressed={teamId === tid}
               className={`min-h-12 rounded-lg border-2 px-2 text-sm font-semibold ${teamId === tid ? 'border-pitch bg-pitch-50' : 'border-line'}`}>{names[tid]}</button>
           ))}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => setType('yellow')} className={`min-h-12 rounded-lg border-2 font-semibold ${type === 'yellow' ? 'border-gold bg-gold/30' : 'border-line'}`}>Yellow</button>
-          <button type="button" onClick={() => setType('red')} className={`min-h-12 rounded-lg border-2 font-semibold ${type === 'red' ? 'border-danger bg-red-100' : 'border-line'}`}>Red</button>
+          <button type="button" onClick={() => setType('yellow')} aria-pressed={type === 'yellow'} className={`min-h-12 rounded-lg border-2 font-semibold ${type === 'yellow' ? 'border-gold bg-gold/30' : 'border-line'}`}>Yellow</button>
+          <button type="button" onClick={() => setType('red')} aria-pressed={type === 'red'} className={`min-h-12 rounded-lg border-2 font-semibold ${type === 'red' ? 'border-danger bg-red-100' : 'border-line'}`}>Red</button>
         </div>
-        <Input label="Minute" type="number" inputMode="numeric" min={0} max={140} value={minute} onChange={(e) => setMinute(e.target.value)} />
-        <PlayerPicker side={sides[teamId]} selected={selected} onSelect={setSelected} typed={typed} onType={setTyped} />
+        <Input label="Minute" type="number" inputMode="numeric" min={0} max={140} value={minute} error={errors.minute}
+          onChange={(e) => { setMinute(e.target.value); setErrors((x) => ({ ...x, minute: undefined })); }} />
+        <PlayerPicker side={sides[teamId]} selected={selected} error={errors.player}
+          onSelect={(o) => { setSelected(o); setErrors((x) => ({ ...x, player: undefined })); }} typed={typed}
+          onType={(v) => { setTyped(v); if (v) setErrors((x) => ({ ...x, player: undefined })); }} />
         <Input label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        {error && <p role="alert" className="text-sm font-medium text-danger">{error}</p>}
-      </div>
+      </form>
     </Modal>
   );
 }

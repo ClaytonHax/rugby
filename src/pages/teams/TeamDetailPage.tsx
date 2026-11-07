@@ -3,14 +3,15 @@ import { Link, useParams } from 'react-router-dom';
 import { collection, doc, query, where } from 'firebase/firestore';
 import { AlertTriangle, Download, Plus, UserMinus, UserPlus } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { useCollection, useDoc, useSettings } from '../../lib/data';
+import { friendlyError, useCollection, useDoc, useSettings } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
 import { isOverAge, todayISO } from '../../lib/eligibility';
 import {
   addPlayerToRoster, addStaff, downloadText, OverAgeError, removePlayerFromRoster, removeStaff, squadCsv,
 } from '../../lib/teams';
 import { STAFF_ROLE_LABELS, type Player, type Staff, type Team, type TeamRoster } from '../../lib/types';
-import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, SkeletonList, StatusBadge, useToast } from '../../components/ui';
+import { formatDate } from '../../components/MatchCard';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, Modal, PageHeader, SkeletonList, StatusBadge, useToast } from '../../components/ui';
 
 type Mode = null | 'player' | 'staff';
 
@@ -29,11 +30,12 @@ export default function TeamDetailPage() {
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [overAgeError, setOverAgeError] = useState<OverAgeError | null>(null);
+  const [removing, setRemoving] = useState<{ kind: 'player' | 'staff'; id: string; name: string } | null>(null);
 
   const today = todayISO();
   const canEdit = appUser?.role !== 'scorer' && (appUser?.schoolId === schoolId || appUser?.role === 'union_admin' || appUser?.role === 'registrar');
-  const playerIds = roster.data?.playerIds ?? [];
-  const staffIds = roster.data?.staffIds ?? [];
+  const playerIds = useMemo(() => roster.data?.playerIds ?? [], [roster.data]);
+  const staffIds = useMemo(() => roster.data?.staffIds ?? [], [roster.data]);
   const inSquad = useMemo(() => players.data.filter((p) => playerIds.includes(p.id)).sort((a, b) => a.lastName.localeCompare(b.lastName)), [players.data, playerIds]);
   const staffInTeam = useMemo(() => staff.data.filter((s) => staffIds.includes(s.id)), [staff.data, staffIds]);
   const overAge = inSquad.filter((p) => isOverAge(p.dob, today, settings));
@@ -49,25 +51,28 @@ export default function TeamDetailPage() {
       .sort((a, b) => Number(b.status === 'verified') - Number(a.status === 'verified') || a.lastName.localeCompare(b.lastName));
   }, [mode, players.data, staff.data, playerIds, staffIds, q]);
 
-  async function run(key: string, fn: () => Promise<void>) {
+  async function run(key: string, fn: () => Promise<void>, done: string) {
     setBusy(key);
     try {
       await fn();
+      toast.success(done);
+      setRemoving(null);
     } catch (e) {
       if (e instanceof OverAgeError) setOverAgeError(e);
-      else toast.error(e instanceof Error ? e.message : 'That change could not be saved. Check your connection and try again.');
+      else toast.error(friendlyError(e, 'That change could not be saved. Check your connection and try again.'));
     } finally {
       setBusy(null);
     }
   }
 
   if (team.loading || roster.loading) return <SkeletonList />;
-  if (!team.data) return <EmptyState title="Team not found" description={team.error ?? 'It may have been removed.'} />;
+  if (team.error) return <ErrorState page title="Could not open this team" description={team.error} onRetry={team.retry} />;
+  if (!team.data) return <EmptyState page title="Team not found" description="It may have been removed." />;
   const t = team.data;
 
   return (
     <div>
-      <PageHeader title={t.name} subtitle={`${t.ageGroup} · Season ${t.season}`} backTo="/app/teams"
+      <PageHeader title={t.name} subtitle={`${t.ageGroup} · Season ${t.season}`} backTo="/app/teams" backLabel="Back to teams"
         actions={<Button variant="secondary" icon={<Download className="size-4" />} disabled={inSquad.length === 0}
           onClick={() => downloadText(`${t.name.replace(/[^a-z0-9]+/gi, '-')}-squad.csv`, squadCsv(t, inSquad, settings))}>Export squad CSV</Button>} />
 
@@ -100,15 +105,15 @@ export default function TeamDetailPage() {
             {inSquad.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-white p-3">
                 <div className="min-w-0">
-                  <Link to={`/app/players/${p.id}`} className="font-semibold hover:underline">{p.firstName} {p.lastName}</Link>
-                  <p className="text-xs text-ink-soft">{p.position} · born {p.dob}</p>
+                  <Link to={`/app/players/${p.id}`} className="inline-flex min-h-11 items-center font-semibold hover:underline">{p.firstName} {p.lastName}</Link>
+                  <p className="text-xs text-ink-soft">{p.position} · born {formatDate(p.dob, false)}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {isOverAge(p.dob, today, settings) && <Badge tone="gold">Over-age</Badge>}
                   {p.status !== 'verified' && <StatusBadge status={p.status} />}
                   {canEdit && (
-                    <Button size="sm" variant="ghost" aria-label={`Remove ${p.firstName} ${p.lastName}`} loading={busy === p.id} disabled={busy !== null}
-                      onClick={() => run(p.id, () => removePlayerFromRoster(t.id, p.id))}><UserMinus className="size-4" /></Button>
+                    <Button size="sm" variant="ghost" className="min-w-11" aria-label={`Remove ${p.firstName} ${p.lastName} from the squad`} loading={busy === p.id} disabled={busy !== null}
+                      onClick={() => setRemoving({ kind: 'player', id: p.id, name: `${p.firstName} ${p.lastName}` })}><UserMinus className="size-4" aria-hidden /></Button>
                   )}
                 </div>
               </li>
@@ -129,12 +134,12 @@ export default function TeamDetailPage() {
             {staffInTeam.map((s) => (
               <li key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-white p-3">
                 <div className="min-w-0">
-                  <Link to={`/app/staff/${s.id}`} className="font-semibold hover:underline">{s.firstName} {s.lastName}</Link>
+                  <Link to={`/app/staff/${s.id}`} className="inline-flex min-h-11 items-center font-semibold hover:underline">{s.firstName} {s.lastName}</Link>
                   <p className="text-xs text-ink-soft">{STAFF_ROLE_LABELS[s.staffRole]}</p>
                 </div>
                 {canEdit && (
-                  <Button size="sm" variant="ghost" aria-label={`Remove ${s.firstName} ${s.lastName}`} loading={busy === s.id} disabled={busy !== null}
-                    onClick={() => run(s.id, () => removeStaff(t.id, s.id))}><UserMinus className="size-4" /></Button>
+                  <Button size="sm" variant="ghost" className="min-w-11" aria-label={`Remove ${s.firstName} ${s.lastName} from the team`} loading={busy === s.id} disabled={busy !== null}
+                    onClick={() => setRemoving({ kind: 'staff', id: s.id, name: `${s.firstName} ${s.lastName}` })}><UserMinus className="size-4" aria-hidden /></Button>
                 )}
               </li>
             ))}
@@ -143,7 +148,7 @@ export default function TeamDetailPage() {
       </section>
 
       <Modal open={mode !== null} onClose={() => setMode(null)} title={mode === 'player' ? 'Add players' : 'Add staff'}>
-        <Input label="Search by name" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input label="Search by name" type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
         <ul className="mt-3 flex flex-col gap-2">
           {candidates.length === 0 && <li className="text-sm text-ink-soft">No one else to add. <Link className="font-semibold text-pitch underline" to={mode === 'player' ? '/app/players/new' : '/app/staff/new'}>Register someone new</Link></li>}
           {candidates.map((p) => {
@@ -159,7 +164,9 @@ export default function TeamDetailPage() {
                 </div>
                 {ok ? (
                   <Button size="sm" loading={busy === p.id} disabled={busy !== null}
-                    onClick={() => run(p.id, () => (mode === 'player' ? addPlayerToRoster(t.id, p.id, settings) : addStaff(t.id, p.id)))}>Add</Button>
+                    aria-label={`Add ${p.firstName} ${p.lastName}`}
+                    onClick={() => run(p.id, () => (mode === 'player' ? addPlayerToRoster(t.id, p.id, settings) : addStaff(t.id, p.id)),
+                      `${p.firstName} ${p.lastName} added to ${mode === 'player' ? 'the squad' : 'the team'}.`)}>Add</Button>
                 ) : (
                   <Link className="text-sm font-semibold text-pitch underline" to={`/app/${mode === 'player' ? 'players' : 'staff'}/${p.id}`}>Finish registration</Link>
                 )}
@@ -168,6 +175,14 @@ export default function TeamDetailPage() {
           })}
         </ul>
       </Modal>
+
+      <ConfirmDialog open={removing !== null} title={removing?.kind === 'player' ? 'Remove from the squad?' : 'Remove from the team?'} tone="danger"
+        confirmLabel="Remove" loading={busy !== null}
+        message={removing?.kind === 'player'
+          ? `${removing.name} will leave this squad and can no longer be picked for its team sheets. They stay on your school's register and can be added back, if the over-age limit allows.`
+          : `${removing?.name} will no longer be listed as staff for this team. Their record stays on your school's register.`}
+        onCancel={() => setRemoving(null)}
+        onConfirm={() => { if (removing) void run(removing.id, () => (removing.kind === 'player' ? removePlayerFromRoster(t.id, removing.id) : removeStaff(t.id, removing.id)), `${removing.name} removed.`); }} />
 
       <Modal open={overAgeError !== null} onClose={() => setOverAgeError(null)} title="Over-age limit reached"
         footer={<Button onClick={() => setOverAgeError(null)}>OK</Button>}>

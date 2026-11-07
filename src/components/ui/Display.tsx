@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { useEffect, type ReactNode } from 'react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Button } from './Button';
 import type { RecordStatus } from '../../lib/types';
 
 export function Card({ children, className = '', padded = true }: { children: ReactNode; className?: string; padded?: boolean }) {
@@ -32,14 +33,25 @@ export function StatusBadge({ status, className }: { status: RecordStatus; class
   return <Badge tone={s.tone} className={className}>{s.label}</Badge>;
 }
 
-export function EmptyState({ title, description, action, icon }: { title: string; description?: string; action?: ReactNode; icon?: ReactNode }) {
+/** `page` makes the title the page's h1, for screens that show nothing else (not found, no access). */
+export function EmptyState({ title, description, action, icon, page = false }: { title: string; description?: string; action?: ReactNode; icon?: ReactNode; page?: boolean }) {
+  const Heading = page ? 'h1' : 'h2';
+  useDocumentTitle(page ? title : null);
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-line bg-white px-6 py-10 text-center">
       {icon && <div className="text-pitch" aria-hidden>{icon}</div>}
-      <h2 className="text-xl text-ink">{title}</h2>
+      <Heading className="text-xl text-ink">{title}</Heading>
       {description && <p className="max-w-md text-sm text-ink-soft">{description}</p>}
       {action}
     </div>
+  );
+}
+
+/** A list or page that failed to load. Offers a retry (the caller's, or a full reload). */
+export function ErrorState({ title = 'Could not load this', description, onRetry, page = false }: { title?: string; description?: string | null; onRetry?: () => void; page?: boolean }) {
+  return (
+    <EmptyState title={title} page={page} description={description ?? 'Check your signal and try again.'}
+      action={<Button variant="secondary" icon={<RefreshCw className="size-4" />} onClick={onRetry ?? (() => window.location.reload())}>Try again</Button>} />
   );
 }
 
@@ -55,13 +67,27 @@ export function SkeletonList({ rows = 4 }: { rows?: number }) {
   );
 }
 
-export function PageHeader({ title, subtitle, actions, backTo }: { title: string; subtitle?: string; actions?: ReactNode; backTo?: string }) {
+/** Sets the browser tab title while mounted. Pass null to leave it alone. */
+export function useDocumentTitle(title: string | null): void {
+  useEffect(() => {
+    if (!title) return;
+    document.title = `${title} · Tryline`;
+    return () => { document.title = 'Tryline'; };
+  }, [title]);
+}
+
+export function PageHeader({ title, subtitle, actions, backTo, backLabel = 'Back', documentTitle }: {
+  title: string; subtitle?: string; actions?: ReactNode; backTo?: string; backLabel?: string;
+  /** Tab title when the heading holds personal data (a name) that should not sit in browser history. */
+  documentTitle?: string;
+}) {
+  useDocumentTitle(documentTitle ?? title);
   return (
     <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
         {backTo && (
-          <Link to={backTo} className="mb-1 inline-flex min-h-8 items-center gap-1 text-sm font-medium text-pitch hover:underline">
-            <ArrowLeft className="size-4" aria-hidden /> Back
+          <Link to={backTo} className="mb-1 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-pitch hover:underline">
+            <ArrowLeft className="size-4" aria-hidden /> {backLabel}
           </Link>
         )}
         <h1 className="text-3xl leading-tight text-ink md:text-4xl">{title}</h1>

@@ -3,13 +3,15 @@ import { Link, useParams } from 'react-router-dom';
 import { doc } from 'firebase/firestore';
 import { ClipboardList, Eye, Play } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { useDoc } from '../../lib/data';
+import { friendlyError, useDoc } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
 import { setStatus } from '../../lib/matches';
 import type { Match, TeamSheet } from '../../lib/types';
 import { formatDate } from '../../components/MatchCard';
-import { Button, Card, ConfirmDialog, EmptyState, LinkButton, PageHeader, SkeletonList, useToast } from '../../components/ui';
+import { Button, Card, ConfirmDialog, EmptyState, ErrorState, LinkButton, PageHeader, SkeletonList, useToast } from '../../components/ui';
 import { SheetEntries, SheetStatusBadge } from './SheetView';
+
+const STATUS_TEXT: Record<Match['status'], string> = { scheduled: 'Not started', live: 'Live', final: 'Full time', cancelled: 'Cancelled' };
 
 function SheetCard({ match, teamId, name, schoolId }: { match: Match; teamId: string; name: string; schoolId: string }) {
   const { appUser } = useAuth();
@@ -53,7 +55,8 @@ export default function MatchAdminPage() {
   const match = useDoc<Match>(() => doc(db, 'matches', id), [id]);
   const [confirm, setConfirm] = useState<null | 'cancel' | 'reopen'>(null);
   if (match.loading) return <SkeletonList />;
-  if (!match.data) return <EmptyState title="Match not found" description={match.error ?? undefined} />;
+  if (match.error) return <ErrorState page title="Could not open this match" description={match.error} onRetry={match.retry} />;
+  if (!match.data) return <EmptyState page title="Match not found" description="It may have been removed." action={<LinkButton to="/app/matches" variant="secondary">Back to matches</LinkButton>} />;
   const m = match.data;
   const role = appUser?.role;
   const unionLevel = role === 'union_admin' || role === 'registrar';
@@ -62,21 +65,21 @@ export default function MatchAdminPage() {
 
   function change(status: Match['status'], msg: string) {
     setConfirm(null);
-    setStatus(m, status).catch((e) => toast.error(e instanceof Error ? e.message : 'Could not update the match.'));
+    setStatus(m, status).catch((e) => toast.error(friendlyError(e, 'Could not update the match.')));
     toast.toast(msg);
   }
 
   return (
     <div>
-      <PageHeader title={`${m.homeName} v ${m.awayName}`} subtitle={`${m.ageGroup} · ${m.competition} · ${formatDate(m.date)} ${m.kickoff}`} backTo="/app/matches"
-        actions={<Link className="text-sm font-semibold text-pitch underline" to={`/matches/${m.id}`}>Public page</Link>} />
+      <PageHeader title={`${m.homeName} v ${m.awayName}`} subtitle={`${m.ageGroup} · ${m.competition} · ${formatDate(m.date)} ${m.kickoff}`} backTo="/app/matches" backLabel="Back to matches"
+        actions={<Link className="inline-flex min-h-11 items-center text-sm font-semibold text-pitch underline" to={`/matches/${m.id}`}>Public page</Link>} />
       <Card className="mb-5">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center">
           <span className="font-semibold">{m.homeName}</span>
           <span className="num text-5xl">{m.homeScore} - {m.awayScore}</span>
           <span className="font-semibold">{m.awayName}</span>
         </div>
-        <p className="mt-2 text-center text-sm text-ink-soft">{m.venue}, {m.town}{m.referee ? ` · Referee ${m.referee}` : ''} · {m.status}</p>
+        <p className="mt-2 text-center text-sm text-ink-soft">{m.venue}, {m.town}{m.referee ? ` · Referee ${m.referee}` : ''} · {STATUS_TEXT[m.status]}</p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           {canScore && m.status !== 'final' && m.status !== 'cancelled' && (
             <LinkButton to={`/app/matches/${m.id}/score`} variant="gold" icon={<Play className="size-4" />}>{m.status === 'live' ? 'Continue scoring' : 'Score match'}</LinkButton>
@@ -93,8 +96,8 @@ export default function MatchAdminPage() {
       ) : (
         <p className="text-sm text-ink-soft">Team sheets are visible to staff of the two schools and the union.</p>
       )}
-      <ConfirmDialog open={confirm === 'cancel'} title="Cancel this match?" message="It will show as cancelled on the public site."
-        confirmLabel="Cancel match" cancelLabel="Keep" tone="danger" onConfirm={() => change('cancelled', 'Match cancelled.')} onCancel={() => setConfirm(null)} />
+      <ConfirmDialog open={confirm === 'cancel'} title="Cancel this match?"  message="It will show as cancelled on the public site, and nobody will be able to score it unless the union reopens it."
+        confirmLabel="Cancel match" cancelLabel="Keep match" tone="danger" onConfirm={() => change('cancelled', 'Match cancelled.')} onCancel={() => setConfirm(null)} />
       <ConfirmDialog open={confirm === 'reopen'} title="Reopen this match?" message="It goes back to live so the score can be corrected. This is recorded in the audit log."
         confirmLabel="Reopen" onConfirm={() => change('live', 'Match reopened.')} onCancel={() => setConfirm(null)} />
     </div>

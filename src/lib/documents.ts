@@ -57,7 +57,7 @@ export function friendlyDocError(err: unknown): string {
   if (code === 'unavailable' || code === 'deadline-exceeded') {
     return 'The connection dropped. Check your signal and try again.';
   }
-  return err instanceof Error ? err.message : 'Something went wrong with the document.';
+  return errorCode(err) ? 'Something went wrong with the document. Please try again.' : err instanceof Error ? err.message : 'Something went wrong with the document.';
 }
 
 function personCollection(ownerType: DocOwnerType): 'players' | 'staff' | null {
@@ -66,11 +66,20 @@ function personCollection(ownerType: DocOwnerType): 'players' | 'staff' | null {
   return null;
 }
 
+const WRITE_TIMEOUT_MS = 25_000;
+
+/** Offline, Firestore queues a write and never answers; give up after a while so the upload can report it. */
+function withTimeout<T>(p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject({ code: 'deadline-exceeded' }), WRITE_TIMEOUT_MS); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
 async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
   let last: unknown;
   for (let i = 0; i < tries; i++) {
     try {
-      return await fn();
+      return await withTimeout(fn());
     } catch (err) {
       last = err;
       const code = errorCode(err);
@@ -125,6 +134,9 @@ export async function uploadDocument(
 ): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('You are signed out. Sign in again to upload.');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    throw new Error('You are offline. Connect to the internet to upload documents, then try again.');
+  }
   const isPdf = file.type === 'application/pdf';
   const isImage = file.type.startsWith('image/');
   if (!isPdf && !isImage) throw new Error('Choose a photo or a PDF.');

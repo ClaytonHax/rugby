@@ -1,5 +1,5 @@
-import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, useEffect, type ComponentType, type ReactNode } from 'react';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from './lib/auth';
 import { ToastProvider, SkeletonList } from './components/ui';
 import { RequireRole } from './components/RequireRole';
@@ -42,6 +42,7 @@ const LogsPage = L(() => import('./pages/public/LogsPage'));
 const SchoolsPublicPage = L(() => import('./pages/public/SchoolsPublicPage'));
 const SchoolPublicPage = L(() => import('./pages/public/SchoolPublicPage'));
 const MatchPublicPage = L(() => import('./pages/public/MatchPublicPage'));
+const NotFoundPage = L(() => import('./pages/NotFoundPage'));
 
 const REG: Role[] = ['union_admin', 'registrar', 'school_admin', 'coach', 'manager'];
 const UNION: Role[] = ['union_admin', 'registrar'];
@@ -50,9 +51,20 @@ function guard(roles: Role[], el: ReactNode) {
   return <RequireRole roles={roles}>{el}</RequireRole>;
 }
 
+/** New page: back to the top, and keyboard and screen reader focus to the start of the content. */
+function RouteChange() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.getElementById('main')?.focus({ preventScroll: true });
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <RouteChange />
       <AuthProvider>
         <ToastProvider>
           <Suspense fallback={<div className="p-6"><SkeletonList /></div>}>
@@ -65,6 +77,7 @@ export default function App() {
                 <Route path="/schools" element={<SchoolsPublicPage />} />
                 <Route path="/schools/:id" element={<SchoolPublicPage />} />
                 <Route path="/matches/:id" element={<MatchPublicPage />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
 
               <Route path="/login" element={<LoginPage />} />
@@ -95,8 +108,8 @@ export default function App() {
                 <Route path="schools" element={guard(['union_admin'], <SchoolsAdminPage />)} />
                 <Route path="settings" element={guard(['union_admin'], <SettingsPage />)} />
                 <Route path="account" element={<AccountPage />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </ToastProvider>

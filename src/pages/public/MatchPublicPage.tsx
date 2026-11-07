@@ -4,7 +4,7 @@ import { db } from '../../lib/firebase';
 import { useCollection, useDoc } from '../../lib/data';
 import { SCORE_POINTS, type Match, type ScoreEvent, type ScoreType } from '../../lib/types';
 import { formatDate } from '../../components/MatchCard';
-import { Badge, Card, EmptyState, PageHeader, SkeletonList } from '../../components/ui';
+import { Badge, Card, EmptyState, ErrorState, PageHeader, SkeletonList } from '../../components/ui';
 
 const LABEL: Record<ScoreType, string> = { try: 'Try', conversion: 'Conversion', penalty: 'Penalty', drop_goal: 'Drop goal', penalty_try: 'Penalty try' };
 
@@ -14,12 +14,13 @@ export default function MatchPublicPage() {
   const events = useCollection<ScoreEvent>(() => collection(db, 'matches', id, 'events'), [id]);
   if (match.loading) return <SkeletonList rows={2} />;
   const m = match.data;
-  if (!m) return <EmptyState title="Match not found" description={match.error ?? 'This match does not exist.'} />;
+  if (match.error) return <ErrorState page title="Could not load this match" description={match.error} onRetry={match.retry} />;
+  if (!m) return <EmptyState page title="Match not found" description="This match does not exist." />;
   const list = [...events.data].sort((a, b) => a.minute - b.minute || (a.createdAt?.toMillis() ?? Infinity) - (b.createdAt?.toMillis() ?? Infinity));
   const showScore = m.status === 'live' || m.status === 'final';
   return (
     <div>
-      <PageHeader title={`${m.homeName} v ${m.awayName}`} subtitle={`${m.ageGroup} · ${m.competition} · ${formatDate(m.date)}, ${m.kickoff} · ${m.venue}, ${m.town}`} backTo="/fixtures" />
+      <PageHeader title={`${m.homeName} v ${m.awayName}`} subtitle={`${m.ageGroup} · ${m.competition} · ${formatDate(m.date)}, ${m.kickoff} · ${m.venue}, ${m.town}`} backTo={m.status === 'final' ? '/results' : '/fixtures'} backLabel={m.status === 'final' ? 'Back to results' : 'Back to fixtures'} />
       <Card className="mb-6 text-center">
         <div className="mb-2 flex justify-center">
           {m.status === 'live' ? <Badge tone="red">Live</Badge> : m.status === 'final' ? <Badge>Full time</Badge> : m.status === 'cancelled' ? <Badge tone="amber">Cancelled</Badge> : <Badge tone="gold">Kickoff {m.kickoff}</Badge>}
@@ -32,7 +33,7 @@ export default function MatchPublicPage() {
         {m.referee && <p className="mt-3 text-xs text-ink-soft">Referee: {m.referee}</p>}
       </Card>
       <h2 className="mb-2 text-2xl">Scoring</h2>
-      {events.loading ? <SkeletonList rows={2} /> : list.length === 0
+      {events.loading ? <SkeletonList rows={2} /> : events.error ? <ErrorState title="Could not load the scoring" description={events.error} onRetry={events.retry} /> : list.length === 0
         ? <EmptyState title="No scoring yet" description={m.status === 'scheduled' ? 'Scoring appears here during the match.' : 'No points were recorded.'} />
         : (
           <ol className="flex flex-col gap-2">

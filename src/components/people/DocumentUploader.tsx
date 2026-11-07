@@ -3,6 +3,7 @@ import { Camera, CheckCircle2, CircleDashed, Lock, Trash2 } from 'lucide-react';
 import { Button, ConfirmDialog, useToast } from '../ui';
 import { canViewDocument, deleteDocument, docId, uploadDocument, type DocOwner } from '../../lib/documents';
 import { useAuth } from '../../lib/auth';
+import { friendlyError } from '../../lib/data';
 import type { DocType, StoredDocument } from '../../lib/types';
 import { DocumentViewer } from './DocumentViewer';
 
@@ -46,7 +47,7 @@ export function DocumentUploader({ owner, type, label, hint, existing, disabled,
       await uploadDocument(owner, type, file, setProgress);
       toast.success(`${label} uploaded.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed.');
+      setError(friendlyError(err, 'The upload failed. Try again.'));
     } finally {
       setProgress(null);
     }
@@ -59,7 +60,7 @@ export function DocumentUploader({ owner, type, label, hint, existing, disabled,
       toast.success(`${label} removed.`);
       setConfirmRemove(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not remove the document.');
+      toast.error(friendlyError(err, 'Could not remove the document.'));
     } finally {
       setRemoving(false);
     }
@@ -101,19 +102,19 @@ export function DocumentUploader({ owner, type, label, hint, existing, disabled,
             <input ref={input} type="file" className="sr-only" tabIndex={-1} aria-label={`Choose file for ${label}`}
               accept={type === 'photo' ? 'image/*' : 'image/*,application/pdf'}
               onChange={(e) => void onFile(e.target.files?.[0])} />
-            <Button size="sm" variant={done ? 'secondary' : 'primary'} icon={<Camera className="size-4" />} loading={uploading}
+            <Button size="sm" variant={done ? 'secondary' : 'primary'} icon={<Camera className="size-4" />} loading={uploading} aria-label={done ? `Replace ${label.toLowerCase()}` : undefined}
               onClick={() => input.current?.click()}>
               {done ? 'Replace' : type === 'photo' ? 'Take or choose photo' : 'Take photo or choose file'}
             </Button>
             {existing && !uploading && (
-              <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => setConfirmRemove(true)}>Remove</Button>
+              <Button size="sm" variant="ghost" icon={<Trash2 className="size-4" />} aria-label={`Remove ${label.toLowerCase()}`} onClick={() => setConfirmRemove(true)}>Remove</Button>
             )}
           </>
         )}
       </div>
       {canView && <div className="mt-3"><DocumentViewer documentId={id} label={label} autoLoad={autoLoad} /></div>}
       <ConfirmDialog open={confirmRemove} title={`Remove ${label.toLowerCase()}?`} tone="danger" confirmLabel="Remove" loading={removing}
-        message="The file will be deleted. You will need to upload it again before this record can be submitted."
+        message="The file will be permanently deleted. You will need to upload it again before this record can be submitted."
         onConfirm={() => void remove()} onCancel={() => setConfirmRemove(false)} />
     </div>
   );

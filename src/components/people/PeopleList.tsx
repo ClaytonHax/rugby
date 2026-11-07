@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
-import { Download, Plus, Search, UserPlus } from 'lucide-react';
+import { useMemo } from 'react';
+import { Download, Plus, UserPlus } from 'lucide-react';
 import { Badge, Button, DataList, EmptyState, Input, LinkButton, PageHeader, Select, StatusBadge } from '../ui';
 import { useCollection, useSettings } from '../../lib/data';
 import { ageOn, isOverAge, todayISO } from '../../lib/eligibility';
 import { personName, personsQuery, type AnyPerson, type PersonKind } from '../../lib/people';
 import { STAFF_ROLE_LABELS, type Player, type RecordStatus, type Staff } from '../../lib/types';
+import { useSessionState } from '../../lib/useSessionState';
 import { downloadCsv, toCsv } from './csv';
 import { useSchoolScope } from './useSchoolScope';
 
@@ -24,9 +25,10 @@ export function PeopleList({ kind }: { kind: PersonKind }) {
   const { appUser, union, schools, pick, setPick, schoolId, canQuery } = useSchoolScope();
   const { settings } = useSettings();
   const state = useCollection<AnyPerson>(() => personsQuery(kind, schoolId, union), [kind, schoolId, union]);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('any');
-  const [age, setAge] = useState('any');
+  // Kept for the tab session, so coming back from a record shows the same filtered list.
+  const [search, setSearch] = useSessionState<string>(`people.${kind}.search`, '');
+  const [status, setStatus] = useSessionState<string>(`people.${kind}.status`, 'any');
+  const [age, setAge] = useSessionState<string>(`people.${kind}.age`, 'any');
   const today = todayISO();
   const base = kind === 'player' ? '/app/players' : '/app/staff';
   const noun = kind === 'player' ? 'player' : 'staff member';
@@ -36,7 +38,7 @@ export function PeopleList({ kind }: { kind: PersonKind }) {
     return state.data
       .filter((p) => (status === 'any' || p.status === status)
         && (kind === 'staff' || matchesAge(age, p.dob, isOverAge(p.dob, today, settings)))
-        && (!q || personName(p).toLowerCase().includes(q) || p.lastName.toLowerCase().startsWith(q)))
+        && (!q || personName(p).toLowerCase().includes(q)))
       .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName));
   }, [state.data, search, status, age, kind, today, settings]);
 
@@ -63,7 +65,7 @@ export function PeopleList({ kind }: { kind: PersonKind }) {
   return (
     <div>
       <PageHeader title={kind === 'player' ? 'Players' : 'Coaches and staff'}
-        subtitle={`${rows.length} of ${state.data.length} shown`}
+        subtitle={state.loading || !canQuery ? undefined : `${rows.length} of ${state.data.length} shown`}
         actions={
           <>
             {kind === 'player' && <Button variant="secondary" icon={<Download className="size-4" />} disabled={rows.length === 0} onClick={exportCsv}>Export CSV</Button>}
@@ -71,10 +73,7 @@ export function PeopleList({ kind }: { kind: PersonKind }) {
           </>
         } />
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-[2.45rem] size-4 text-ink-soft" aria-hidden />
-          <Input label="Search by name" type="search" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" placeholder="Name or surname" />
-        </div>
+        <Input label="Search by name" type="search" autoComplete="off" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or surname" />
         <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value)}
           options={[{ value: 'any', label: 'All statuses' }, ...STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))]} />
         {kind === 'player' && <Select label="Age" value={age} onChange={(e) => setAge(e.target.value)} options={ageOptions} />}
@@ -86,7 +85,7 @@ export function PeopleList({ kind }: { kind: PersonKind }) {
       {!canQuery ? (
         <EmptyState title="No school assigned" description={`Your account is not linked to a school yet, so there are no ${kind === 'player' ? 'players' : 'staff'} to show. Ask your administrator.`} />
       ) : (
-        <DataList<AnyPerson> items={rows} loading={state.loading} error={state.error} rowKey={(p) => p.id} rowHref={(p) => `${base}/${p.id}`}
+        <DataList<AnyPerson> items={rows} loading={state.loading} error={state.error} onRetry={state.retry} rowKey={(p) => p.id} rowHref={(p) => `${base}/${p.id}`}
           empty={state.data.length === 0 ? (
             <EmptyState icon={<UserPlus className="size-8" />} title={`No ${kind === 'player' ? 'players' : 'staff'} registered yet`}
               description={`Register a ${noun} to start. You will need a photo and an ID document${kind === 'player' ? ', plus guardian consent' : ''}.`}
@@ -106,7 +105,7 @@ export function PeopleList({ kind }: { kind: PersonKind }) {
               { key: 'role', header: 'Role', cell: (p: AnyPerson) => STAFF_ROLE_LABELS[(p as Staff).staffRole] },
             ]),
             ...(union || appUser?.schoolId === null ? [{ key: 'school', header: 'School', cell: (p: AnyPerson) => p.schoolName }] : []),
-            { key: 'reg', header: 'Reg. no', cell: (p) => p.registrationNo ?? '' },
+            { key: 'reg', header: 'Reg. no', cell: (p) => p.registrationNo ?? (p.status === 'verified' ? '' : 'Not yet issued') },
           ]} />
       )}
     </div>

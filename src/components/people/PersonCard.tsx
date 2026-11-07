@@ -11,7 +11,7 @@ export function PersonCard({ person, kind, onClick, selected }: {
     ? `${(person as Player).position || 'No position'} - age ${ageOn(person.dob, todayISO())}`
     : STAFF_ROLE_LABELS[(person as Staff).staffRole];
   return (
-    <button type="button" onClick={onClick}
+    <button type="button" onClick={onClick} aria-current={selected ? 'true' : undefined}
       className={`flex min-h-16 w-full items-center gap-3 rounded-xl border p-3 text-left ${selected ? 'border-pitch bg-pitch-50' : 'border-line bg-white'} hover:bg-chalk`}>
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold text-ink">{personName(person)}</p>

@@ -12,6 +12,8 @@ interface AuthContextValue {
   /** null when signed out, or signed in without an invite. */
   appUser: AppUser | null;
   loading: boolean;
+  /** True when the profile could not be read (no signal), as opposed to not existing. */
+  profileError: boolean;
   /** Message to show on the login screen (e.g. deactivated account). */
   notice: string | null;
   signIn: (email: string, password: string) => Promise<void>;
@@ -42,7 +44,7 @@ export function friendlyAuthError(err: unknown): string {
     case 'auth/too-many-requests': return 'Too many attempts. Wait a few minutes and try again.';
     case 'auth/network-request-failed': return 'No connection. Check your signal and try again.';
     case 'auth/requires-recent-login': return 'For security, sign out and back in, then try again.';
-    default: return err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+    default: return code ? 'Something went wrong. Please try again.' : err instanceof Error ? err.message : 'Something went wrong. Please try again.';
   }
 }
 
@@ -77,11 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const signingUp = useRef(false);
 
   const resolve = useCallback(async (user: User | null): Promise<AppUser | null> => {
     if (!user) {
+      setProfileError(false);
       setAppUser(null);
       actorName = '';
       return null;
@@ -89,8 +93,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let profile: AppUser | null = null;
     try {
       profile = await loadAppUser(user);
+      setProfileError(false);
     } catch {
       profile = null;
+      setProfileError(true);
     }
     if (profile && !profile.active) {
       setNotice('Your account has been deactivated. Contact your school administrator.');
@@ -150,8 +156,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [resolve]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ firebaseUser, appUser, loading, notice, signIn, signUp, signOut, resetPassword, refreshClaim }),
-    [firebaseUser, appUser, loading, notice, signIn, signUp, signOut, resetPassword, refreshClaim],
+    () => ({ firebaseUser, appUser, loading, profileError, notice, signIn, signUp, signOut, resetPassword, refreshClaim }),
+    [firebaseUser, appUser, loading, profileError, notice, signIn, signUp, signOut, resetPassword, refreshClaim],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

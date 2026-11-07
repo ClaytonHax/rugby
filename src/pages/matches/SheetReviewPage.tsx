@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, query, where } from 'firebase/firestore';
 import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
 import { db } from '../../lib/firebase';
-import { useCollection, useSettings } from '../../lib/data';
+import { friendlyError, savedText, useCollection, useSettings } from '../../lib/data';
 import { approveSheet, rejectSheet, returnSheetToDraft } from '../../lib/sheets';
 import { loadDocument } from '../../lib/documents';
 import type { Match, TeamSheet } from '../../lib/types';
 import { formatDate } from '../../components/MatchCard';
-import { Button, Card, EmptyState, PageHeader, SkeletonList, Textarea, useToast } from '../../components/ui';
+import { Button, Card, EmptyState, ErrorState, PageHeader, SkeletonList, Tabs, Textarea, useToast } from '../../components/ui';
 import { SheetEntries, SheetStatusBadge } from './SheetView';
 
 interface Item {
@@ -59,16 +59,16 @@ export default function SheetReviewPage() {
     { match: m, teamId: m.awayTeamId, name: m.awayName, sheet: sheets[`${m.id}_${m.awayTeamId}`] ?? null },
   ]).filter((i) => (filter === 'submitted' ? i.sheet?.status === 'submitted' : i.sheet !== null)), [list, sheets, filter]);
 
-  const act = useCallback(async (key: string, fn: () => Promise<void>, done: string) => {
+  const act = useCallback(async (key: string, fn: () => Promise<'saved' | 'queued'>, done: string) => {
     setBusy(key);
     setErrorKey(null);
     try {
-      await fn();
-      toast.success(done);
+      const outcome = await fn();
+      toast.success(savedText(done, outcome));
       setReload((n) => n + 1);
     } catch (e) {
       setErrorKey(key);
-      toast.error(e instanceof Error ? e.message : 'Could not update the sheet.');
+      toast.error(friendlyError(e, 'Could not update the sheet.'));
     } finally {
       setBusy(null);
     }
@@ -79,7 +79,7 @@ export default function SheetReviewPage() {
       const d = await loadDocument(docId);
       window.open(d.url, '_blank', 'noopener');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not open the scan.');
+      toast.error(friendlyError(e, 'Could not open the scan.'));
     }
   }
 
@@ -87,13 +87,10 @@ export default function SheetReviewPage() {
     <div>
       <PageHeader title="Team sheets" subtitle="Review sheets for scheduled and live matches."
         actions={<Button variant="secondary" size="sm" icon={<RefreshCw className="size-4" />} onClick={() => setReload((n) => n + 1)}>Refresh</Button>} />
-      <div role="tablist" className="mb-4 flex gap-2">
-        {([['submitted', 'Awaiting review'], ['all', 'All sheets']] as const).map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
-            className={`min-h-11 rounded-lg px-4 text-sm font-semibold ${filter === k ? 'bg-pitch text-white' : 'border border-line bg-white'}`}>{label}</button>
-        ))}
-      </div>
-      {matches.loading || loadingSheets ? <SkeletonList /> : matches.error ? <EmptyState title="Could not load matches" description={matches.error} /> : items.length === 0 ? (
+      <Tabs idBase="sheets" label="Team sheets" value={filter} onChange={setFilter}
+        tabs={[{ key: 'submitted', label: 'Awaiting review' }, { key: 'all', label: 'All sheets' }]} />
+      <div role="tabpanel" id="sheets-panel" aria-labelledby={`sheets-${filter}`}>
+      {matches.loading || loadingSheets ? <SkeletonList /> : matches.error ? <ErrorState title="Could not load matches" description={matches.error} onRetry={matches.retry} /> : items.length === 0 ? (
         <EmptyState title={filter === 'submitted' ? 'No sheets waiting' : 'No sheets yet'} description="Sheets appear here once schools build them for upcoming matches." />
       ) : (
         <div className="flex flex-col gap-4">
@@ -118,7 +115,7 @@ export default function SheetReviewPage() {
                 {s.scanDocId && <Button className="mt-3" size="sm" variant="secondary" onClick={() => void openScan(s.scanDocId as string)}>Open scanned sheet</Button>}
                 {s.status === 'submitted' && (
                   <div className="mt-4 flex flex-col gap-3">
-                    <Textarea label="Note (required to reject)" rows={2} value={note[key] ?? ''} onChange={(e) => setNote((n) => ({ ...n, [key]: e.target.value }))}
+                    <Textarea label={`Note for ${i.name} (required to reject)`} rows={2} value={note[key] ?? ''} onChange={(e) => setNote((n) => ({ ...n, [key]: e.target.value }))}
                       error={errorKey === key && !(note[key] ?? '').trim() ? 'Add a reason for rejecting.' : null} />
                     <div className="flex flex-wrap gap-2">
                       <Button icon={<CheckCircle2 className="size-4" />} loading={busy === key} onClick={() => act(key, () => approveSheet(s, note[key] ?? ''), 'Sheet approved.')}>Approve</Button>
@@ -139,6 +136,7 @@ export default function SheetReviewPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

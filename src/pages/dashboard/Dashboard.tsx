@@ -7,7 +7,8 @@ import { useAuth } from '../../lib/auth';
 import { useCollection } from '../../lib/data';
 import { todayISO } from '../../lib/eligibility';
 import { ROLE_LABELS, type Match, type Player, type Staff } from '../../lib/types';
-import { Card, PageHeader, Skeleton } from '../../components/ui';
+import { formatDate } from '../../components/MatchCard';
+import { Button, Card, PageHeader, Skeleton } from '../../components/ui';
 
 function Stat({ label, value, loading, to, icon: Icon }: { label: string; value: number; loading: boolean; to: string; icon: LucideIcon }) {
   return (
@@ -51,11 +52,18 @@ export default function Dashboard() {
   const upcoming = matches.data.filter((m) => m.date >= today || m.status === 'live')
     .filter((m) => unionLevel || sid === null || m.schoolIds.includes(sid));
   const live = upcoming.filter((m) => m.status === 'live');
+  const loadError = players.error ?? staff.error ?? matches.error;
   const count = (list: { status: string }[], s: string) => list.filter((p) => p.status === s).length;
 
   return (
     <div>
       <PageHeader title={`Welcome, ${appUser.displayName.split(' ')[0]}`} subtitle={ROLE_LABELS[appUser.role]} />
+      {loadError && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-danger/40 bg-red-50 p-3 text-sm text-red-900">
+          <span>Some numbers could not be loaded. {loadError}</span>
+          <Button size="sm" variant="secondary" onClick={() => { players.retry(); staff.retry(); matches.retry(); }}>Try again</Button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {unionLevel ? (
           <>
@@ -97,8 +105,8 @@ export default function Dashboard() {
           <Card padded={false} className="divide-y divide-line">
             {[...upcoming].sort((a, b) => (a.date + a.kickoff).localeCompare(b.date + b.kickoff)).slice(0, 5).map((m) => (
               <Link key={m.id} to={`/app/matches/${m.id}`} className="flex min-h-14 items-center justify-between gap-3 px-4 py-2 hover:bg-chalk">
-                <span className="min-w-0 truncate font-semibold">{m.homeName} v {m.awayName}</span>
-                <span className="shrink-0 text-sm text-ink-soft">{m.date} {m.kickoff}</span>
+                <span className="min-w-0 font-semibold">{m.homeName} v {m.awayName}</span>
+                <span className="shrink-0 text-sm text-ink-soft">{formatDate(m.date)}, {m.kickoff}</span>
               </Link>
             ))}
           </Card>

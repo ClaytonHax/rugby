@@ -22,7 +22,7 @@ export function SheetEntries({ entries, showOverAge = false }: { entries: SheetE
         <li key={`${e.jersey}-${e.playerId}`} className="flex items-center gap-3 px-3 py-2">
           <span className="num w-9 shrink-0 text-center text-2xl text-pitch">{e.jersey}</span>
           <div className="min-w-0 flex-1">
-            <p className="truncate font-semibold">{e.name}{e.isCaptain && <span className="ml-2 text-xs font-bold text-gold-dark">(C)</span>}</p>
+            <p className="truncate font-semibold">{e.name}{e.isCaptain && <span className="ml-2 text-xs font-bold text-gold-dark" title="Captain">(C)<span className="sr-only"> captain</span></span>}</p>
             <p className="text-xs text-ink-soft">{e.position}{e.jersey > 15 ? ' · replacement' : ''}</p>
           </div>
           {showOverAge && e.overAge && <Badge tone="gold">Over-age</Badge>}

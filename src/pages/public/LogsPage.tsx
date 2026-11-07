@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { AGE_GROUPS } from '../../lib/types';
 import { computeStandings } from '../../lib/standings';
 import { useMatchesByStatus } from '../../lib/useMatches';
-import { EmptyState, PageHeader, Select, SkeletonList } from '../../components/ui';
+import { EmptyState, ErrorState, PageHeader, Select, SkeletonList } from '../../components/ui';
 
 export default function LogsPage() {
-  const { data, loading, error } = useMatchesByStatus(['final'], 'asc');
+  const { data, loading, error, retry } = useMatchesByStatus(['final'], 'asc');
   const seasons = useMemo(() => [...new Set([new Date().getFullYear(), ...data.map((m) => m.season)])].sort((a, b) => b - a), [data]);
   const [season, setSeason] = useState(String(new Date().getFullYear()));
   const [age, setAge] = useState('U16');
@@ -17,14 +17,15 @@ export default function LogsPage() {
         <Select label="Season" value={season} onChange={(e) => setSeason(e.target.value)} options={seasons.map((s) => ({ value: String(s), label: String(s) }))} />
         <Select label="Age group" value={age} onChange={(e) => setAge(e.target.value)} options={AGE_GROUPS.map((a) => ({ value: a, label: a }))} />
       </div>
-      {loading ? <SkeletonList /> : error ? <EmptyState title="Could not load logs" description={error} />
+      {loading ? <SkeletonList /> : error ? <ErrorState title="Could not load logs" description={error} onRetry={retry} />
         : rows.length === 0 ? <EmptyState title="No finished matches" description={`There are no final ${age} results for ${season} yet.`} />
         : (
           <div className="overflow-x-auto rounded-xl border border-line bg-white">
             <table className="w-full table-fixed text-sm">
+              <caption className="sr-only">{age} log for {season}</caption>
               <thead className="border-b border-line bg-chalk text-xs uppercase text-ink-soft">
                 <tr>
-                  <th className="w-7 px-1.5 py-3 text-left sm:w-10 sm:px-3">#</th><th className="px-1.5 py-3 text-left sm:px-3">Team</th>
+                  <th scope="col" className="w-7 px-1.5 py-3 text-left sm:w-10 sm:px-3"><span aria-hidden>#</span><span className="sr-only">Position</span></th><th scope="col" className="px-1.5 py-3 text-left sm:px-3">Team</th>
                   {['P', 'W', 'D', 'L', 'PF', 'PA', 'PD', 'Pts'].map((h) => <th key={h} scope="col" className="w-8 px-0.5 py-3 text-right last:pr-2 sm:w-12 sm:px-2">{h}</th>)}
                 </tr>
               </thead>

@@ -9,7 +9,9 @@
   --color-chalk: #F6F4EC;
   --color-line: #dcd9cc;
   --color-gold: #E0A526;
-  --color-gold-dark: #b9840f;
+  --color-gold-dark: #8a6100;
+  --color-gold-hover: #c9921c;
+  --color-ink-mute: #5f6f69;
   --color-danger: #B3261E;
   --color-status-draft: #6b7280;
   --color-status-pending: #b7791f;
@@ -30,5 +32,11 @@ body {
 }
 h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.01em; }
 .num { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; }
-:focus-visible { outline: 3px solid var(--color-gold); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--color-pitch); outline-offset: 2px; box-shadow: 0 0 0 2px #fff; }
+main:focus { outline: none; }
+.skip-link { position: absolute; left: 0.5rem; top: -4rem; z-index: 100; padding: 0.75rem 1rem; border-radius: 0.5rem; background: #fff; color: var(--color-pitch); font-weight: 600; }
+.skip-link:focus { top: 0.5rem; }
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }

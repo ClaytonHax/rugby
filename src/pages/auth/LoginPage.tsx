@@ -7,7 +7,8 @@ import { AuthShell } from './AuthShell';
 export default function LoginPage() {
   const { firebaseUser, loading, notice, signIn } = useAuth();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/app';
+  const requested = (location.state as { from?: string } | null)?.from;
+  const from = requested && requested.startsWith('/') && !requested.startsWith('//') ? requested : '/app';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export default function LoginPage() {
     <AuthShell title="Sign in" subtitle="Registrars, administrators, coaches, managers and scorers.">
       {notice && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-danger">{notice}</p>}
       <form onSubmit={submit} className="flex flex-col gap-4">
-        <Input label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input label="Email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} error={error} />
         <Button type="submit" loading={busy}>Sign in</Button>
       </form>

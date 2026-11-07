@@ -1,6 +1,6 @@
 import { arrayRemove, arrayUnion, collection, doc, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db } from './firebase';
-import { writeAudit } from './data';
+import { confirmWrite, writeAudit } from './data';
 import { isOverAge, ageOn, todayISO } from './eligibility';
 import type { AgeGroup, CompetitionSettings, Player, School, Staff, Team, TeamRoster } from './types';
 
@@ -33,7 +33,7 @@ export function teamName(schoolName: string, ageGroup: AgeGroup, side: string): 
   return hasSide(ageGroup) && side ? `${schoolName} ${ageGroup}${side}` : `${schoolName} ${ageGroup}`;
 }
 
-export async function createTeam(input: { school: School; ageGroup: AgeGroup; side: string; season: number }): Promise<string> {
+export async function createTeam(input: { school: School; ageGroup: AgeGroup; side: string; season: number }): Promise<'saved' | 'queued'> {
   const side = hasSide(input.ageGroup) ? input.side.trim().toUpperCase() : '';
   const teamRef = doc(collection(db, 'teams'));
   const team: Omit<Team, 'id'> = {
@@ -49,9 +49,9 @@ export async function createTeam(input: { school: School; ageGroup: AgeGroup; si
   batch.set(doc(db, 'teamRosters', teamRef.id), {
     teamId: teamRef.id, schoolId: input.school.id, playerIds: [], staffIds: [], overAgeIds: [],
   } satisfies TeamRoster);
-  await batch.commit();
+  const outcome = await confirmWrite(batch.commit());
   void writeAudit('team.created', 'team', teamRef.id, team.name).catch(() => undefined);
-  return teamRef.id;
+  return outcome;
 }
 
 function fullName(p: { firstName: string; lastName: string }): string {

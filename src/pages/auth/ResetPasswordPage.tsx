@@ -31,7 +31,7 @@ export default function ResetPasswordPage() {
         <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-900">If an account exists for {email}, a reset link is on its way.</p>
       ) : (
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <Input label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} error={error} />
+          <Input label="Email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required value={email} onChange={(e) => setEmail(e.target.value)} error={error} />
           <Button type="submit" loading={busy}>Send reset link</Button>
         </form>
       )}

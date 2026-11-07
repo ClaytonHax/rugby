@@ -272,7 +272,10 @@ test('Tryline end-to-end story', async ({ browser }) => {
     await page.getByRole('button', { name: /Kuda Dube/ }).click();
     await expect(page.locator('img[alt="Birth certificate"]')).toBeVisible({ timeout: 30_000 });
     await page.getByRole('button', { name: 'Reject', exact: true }).click();
-    await expect(page.getByRole('dialog').getByRole('button', { name: 'Reject' })).toBeDisabled();
+    // A reason is required: submitting without one explains why and keeps the dialog open.
+    await page.getByRole('dialog').getByRole('button', { name: 'Reject' }).click();
+    await expect(page.getByRole('dialog').getByText(/Give a reason/)).toBeVisible();
+    await expect(page.getByLabel(/^Reason/)).toBeFocused();
     await page.getByLabel(/^Reason/).fill('Photo is too blurred to identify the player');
     await page.getByRole('dialog').getByRole('button', { name: 'Reject' }).click();
     await expect(page.getByText('Rejected.')).toBeVisible();
@@ -511,6 +514,7 @@ test('Tryline end-to-end story', async ({ browser }) => {
     await record(/^Penalty \+3/, '30', 'Gift Marufu', 3);
     await expect(score).toHaveText('13 - 0');
     await page.getByRole('button', { name: 'Undo last' }).click();
+    await page.getByRole('dialog', { name: 'Undo the last event?' }).getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(score).toHaveText('10 - 0');
     await page.getByRole('button', { name: 'Mark as final' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Mark final' }).click();
@@ -536,6 +540,7 @@ test('Tryline end-to-end story', async ({ browser }) => {
     await up.getByRole('button', { name: 'Record +3' }).click();
     await expect(up.locator('span[aria-live="polite"]')).toHaveText('10 - 3');
     await up.getByRole('button', { name: 'Undo last' }).click();
+    await up.getByRole('dialog', { name: 'Undo the last event?' }).getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(up.locator('span[aria-live="polite"]')).toHaveText('10 - 0');
     await expect.poll(async () => (await readDoc<{ awayScore: number; status: string }>(`matches/${matchId}`))).toMatchObject({ awayScore: 0, status: 'final' });
   });

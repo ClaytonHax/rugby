@@ -22,13 +22,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const api = useMemo<ToastApi>(() => ({
     toast, success: (m) => toast(m, 'success'), error: (m) => toast(m, 'error'),
   }), [toast]);
-  const icon = { success: <CheckCircle2 className="size-5 text-green-700" />, error: <XCircle className="size-5 text-danger" />, info: <Info className="size-5 text-pitch" /> };
+  const icon = {
+    success: <CheckCircle2 className="size-5 shrink-0 text-green-700" aria-hidden />,
+    error: <XCircle className="size-5 shrink-0 text-danger" aria-hidden />,
+    info: <Info className="size-5 shrink-0 text-pitch" aria-hidden />,
+  };
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex flex-col items-center gap-2 px-4 md:bottom-6">
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[60] flex flex-col items-center gap-2 px-4 md:bottom-6">
         {items.map((t) => (
-          <div key={t.id} role={t.tone === 'error' ? 'alert' : 'status'} className="pointer-events-auto flex max-w-md items-start gap-2 rounded-lg border border-line bg-white px-4 py-3 text-sm shadow-lg">
+          <div key={t.id} role={t.tone === 'error' ? 'alert' : undefined} className="pointer-events-auto flex max-w-md items-start gap-2 rounded-lg border border-line bg-white px-4 py-3 text-sm shadow-lg">
             {icon[t.tone]}<span>{t.message}</span>
           </div>
         ))}

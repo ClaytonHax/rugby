@@ -9,12 +9,12 @@ const LIMIT = 200;
 
 function formatWhen(log: AuditLog): string {
   const at = log.at?.toDate?.();
-  return at ? at.toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }) : 'Saving...';
+  return at ? at.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Saving...';
 }
 
 export default function AuditPage() {
   const [filter, setFilter] = useState('');
-  const { data, loading, error } = useCollection<AuditLog>(
+  const { data, loading, error, retry } = useCollection<AuditLog>(
     () => query(collection(db, 'auditLogs'), orderBy('at', 'desc'), limit(LIMIT)),
     [],
   );
@@ -44,9 +44,9 @@ export default function AuditPage() {
       />
       <div className="mb-4 max-w-md">
         <Input
-          label="Filter by action"
+          label="Filter the log"
           type="search"
-          placeholder="e.g. player.verified"
+          placeholder="Action, person or target, e.g. player.verified"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
@@ -57,6 +57,7 @@ export default function AuditPage() {
         rowKey={(l) => l.id}
         loading={loading}
         error={error}
+        onRetry={retry}
         empty={
           <p className="rounded-xl border border-dashed border-line bg-white px-6 py-10 text-center text-sm text-ink-soft">
             {term ? `No entries match "${filter.trim()}".` : 'No audit entries yet.'}

@@ -3,10 +3,11 @@ import { doc } from 'firebase/firestore';
 import { AlertTriangle, CheckCircle2, Lock, Pencil, Send, ShieldAlert, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Badge, Button, Card, ConfirmDialog, EmptyState, LinkButton, Modal, PageHeader, SkeletonList, StatusBadge, Textarea, useToast,
+  Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, LinkButton, Modal, PageHeader, SkeletonList, StatusBadge, Textarea, useFocusFirstInvalid, useToast,
 } from '../ui';
+import { formatDate } from '../MatchCard';
 import { db } from '../../lib/firebase';
-import { useDoc, useSettings } from '../../lib/data';
+import { friendlyError, useDoc, useSettings } from '../../lib/data';
 import { useAuth } from '../../lib/auth';
 import { ageOn, isOverAge, todayISO } from '../../lib/eligibility';
 import { useOwnerDocuments } from '../../lib/documents';
@@ -36,16 +37,21 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
   const toast = useToast();
   const navigate = useNavigate();
   const { settings } = useSettings();
-  const { data: p, loading, error } = useDoc<AnyPerson>(() => doc(db, collectionName(kind), id), [kind, id]);
+  const { data: p, loading, error, retry } = useDoc<AnyPerson>(() => doc(db, collectionName(kind), id), [kind, id]);
   const owner = p ? { ownerType: kind, ownerId: p.id, schoolId: p.schoolId } : null;
   const docs = useOwnerDocuments(owner);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reasonError, setReasonError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  useFocusFirstInvalid(tick);
 
-  if (loading) return <SkeletonList rows={3} />;
-  if (error) return <EmptyState title="Could not open this record" description={error} />;
-  if (!p) return <EmptyState title="Record not found" description="It may have been deleted, or it belongs to another school." />;
+  if (loading || leaving) return <SkeletonList rows={3} />;
+  if (error) return <ErrorState page={!review} title="Could not open this record" description={error} onRetry={retry} />;
+  if (!p) return <EmptyState page={!review} title="Record not found" description="It may have been deleted, or it belongs to another school."
+    action={<LinkButton to={kind === 'player' ? '/app/players' : '/app/staff'} variant="secondary">Back to the list</LinkButton>} />;
 
   const role = appUser?.role;
   const union = isUnionRole(role);
@@ -69,7 +75,8 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
       setReason('');
       onActed?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'That did not work. Try again.');
+      setLeaving(false);
+      toast.error(friendlyError(err, 'That did not work. Try again.'));
     } finally {
       setBusy(false);
     }
@@ -80,7 +87,7 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
 
   return (
     <div>
-      <PageHeader title={name} backTo={review ? undefined : backTo ?? listPath}
+      <PageHeader title={name} documentTitle={kind === 'player' ? 'Player record' : 'Staff record'} backTo={review ? undefined : backTo ?? listPath} backLabel={kind === 'player' ? 'Back to players' : 'Back to staff'}
         subtitle={`${p.schoolName}${p.registrationNo ? ` - ${p.registrationNo}` : ''}`}
         actions={
           <>
@@ -116,7 +123,7 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
               <Row label="First name">{p.firstName}</Row>
               <Row label="Last name">{p.lastName}</Row>
-              <Row label="Date of birth">{p.dob}</Row>
+              <Row label="Date of birth">{formatDate(p.dob, false)}</Row>
               <Row label="Age">
                 <span className="inline-flex flex-wrap items-center gap-2">
                   <span className="num text-lg">{age}</span>
@@ -202,22 +209,28 @@ export function PersonDetail({ kind, id, review = false, backTo, onActed }: {
         message={`${name} will become verified again.`}
         onConfirm={() => void run(() => reinstatePerson(kind, p.id), 'Reinstated.')} onCancel={() => setDialog(null)} />
       <ConfirmDialog open={dialog === 'delete'} title="Delete this draft?" tone="danger" loading={busy} confirmLabel="Delete"
-        message="The draft, its uploaded documents and its ID registration will be removed."
-        onConfirm={() => void run(async () => { await deleteDraftPerson(kind, p); navigate(listPath); }, 'Draft deleted.')} onCancel={() => setDialog(null)} />
-      <Modal open={dialog === 'reject' || dialog === 'suspend'} onClose={() => setDialog(null)}
+        message="The draft and its uploaded photo and documents will be permanently deleted. The ID number can then be registered again. This cannot be undone."
+        onConfirm={() => void run(async () => { setLeaving(true); await deleteDraftPerson(kind, p); navigate(listPath); }, 'Draft deleted.')} onCancel={() => setDialog(null)} />
+      <Modal open={dialog === 'reject' || dialog === 'suspend'} onClose={() => { setDialog(null); setReasonError(null); }}
         title={dialog === 'suspend' ? 'Suspend record' : 'Reject record'}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDialog(null)} disabled={busy}>Cancel</Button>
-            <Button variant="danger" loading={busy} disabled={reason.trim().length < 3}
-              onClick={() => void run(() => (dialog === 'suspend' ? suspendPerson(kind, p.id, reason) : rejectPerson(kind, p.id, reason)),
-                dialog === 'suspend' ? 'Suspended.' : 'Rejected.')}>
+            <Button variant="secondary" onClick={() => { setDialog(null); setReasonError(null); }} disabled={busy}>Cancel</Button>
+            <Button variant="danger" loading={busy} type="submit" form="reason-form">
               {dialog === 'suspend' ? 'Suspend' : 'Reject'}
             </Button>
           </>
         }>
-        <Textarea label="Reason (shown to the school)" required value={reason} onChange={(e) => setReason(e.target.value)}
-          hint={dialog === 'suspend' ? 'Why is this record being suspended?' : 'Say what the school must fix, for example "Photo is blurred".'} />
+        <form id="reason-form" noValidate onSubmit={(e) => {
+          e.preventDefault();
+          if (reason.trim().length < 3) { setReasonError('Give a reason of at least a few words.'); setTick((n) => n + 1); return; }
+          setReasonError(null);
+          void run(() => (dialog === 'suspend' ? suspendPerson(kind, p.id, reason) : rejectPerson(kind, p.id, reason)),
+            dialog === 'suspend' ? 'Suspended.' : 'Rejected.');
+        }}>
+          <Textarea label="Reason (shown to the school)" required value={reason} error={reasonError} onChange={(e) => { setReason(e.target.value); setReasonError(null); }}
+            hint={dialog === 'suspend' ? 'Why is this record being suspended?' : 'Say what the school must fix, for example "Photo is blurred".'} />
+        </form>
       </Modal>
     </div>
   );

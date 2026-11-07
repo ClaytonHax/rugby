@@ -1,6 +1,6 @@
-import { addDoc, collection, doc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
+import { addDoc, collection, doc, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { writeAudit } from './data';
+import { confirmWrite, writeAudit } from './data';
 import { SCORE_POINTS, type AgeGroup, type Match, type MatchStatus, type ScoreEvent, type ScoreType, type Team } from './types';
 
 function uidOrThrow(): string {
@@ -21,7 +21,7 @@ export interface MatchInput {
   away: Team;
 }
 
-export async function createMatch(input: MatchInput): Promise<string> {
+export async function createMatch(input: MatchInput): Promise<{ id: string; outcome: 'saved' | 'queued' }> {
   if (input.home.id === input.away.id) throw new Error('Choose two different teams.');
   const data = {
     season: Number(input.date.slice(0, 4)),
@@ -43,9 +43,10 @@ export async function createMatch(input: MatchInput): Promise<string> {
     createdBy: uidOrThrow(),
     createdAt: serverTimestamp(),
   };
-  const ref = await addDoc(collection(db, 'matches'), data);
+  const ref = doc(collection(db, 'matches'));
+  const outcome = await confirmWrite(setDoc(ref, data));
   void writeAudit('match.created', 'match', ref.id, `${data.homeName} v ${data.awayName}, ${data.date}`).catch(() => undefined);
-  return ref.id;
+  return { id: ref.id, outcome };
 }
 
 /** Totals from events, using SCORE_POINTS. */

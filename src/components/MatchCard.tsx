@@ -3,9 +3,11 @@ import { MapPin } from 'lucide-react';
 import type { Match } from '../lib/types';
 import { Badge } from './ui';
 
-export function formatDate(iso: string): string {
+/** "Sat, 7 Nov 2026" from a YYYY-MM-DD string. Every date in the app is shown this way (en-GB). */
+export function formatDate(iso: string, weekday = true): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', { ...(weekday ? { weekday: 'short' as const } : {}), day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function MatchCard({ match, to }: { match: Match; to?: string }) {

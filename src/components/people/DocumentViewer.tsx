@@ -49,7 +49,7 @@ export function DocumentViewer({ documentId, label, autoLoad = false }: { docume
       {doc.contentType === 'application/pdf' ? (
         <>
           <iframe title={label} src={doc.url} className="h-96 w-full rounded-lg border border-line bg-white" />
-          <a href={doc.url} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 text-sm font-medium text-pitch underline">
+          <a href={doc.url} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-pitch underline">
             <FileText className="size-4" aria-hidden /> Open PDF in a new tab
           </a>
         </>

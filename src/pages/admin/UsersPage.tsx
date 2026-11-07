@@ -3,9 +3,9 @@ import { collection, deleteDoc, doc, query, serverTimestamp, setDoc, updateDoc, 
 import { Plus } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../lib/auth';
-import { useCollection, useSchools, writeAudit } from '../../lib/data';
+import { confirmWrite, friendlyError, savedText, useCollection, useSchools, writeAudit } from '../../lib/data';
 import { ROLE_LABELS, type AppUser, type Invite, type Role } from '../../lib/types';
-import { Badge, Button, ConfirmDialog, DataList, Input, Modal, PageHeader, Select, useToast, type Column } from '../../components/ui';
+import { Badge, Button, ConfirmDialog, DataList, Input, Modal, PageHeader, Select, useFocusFirstInvalid, useToast, type Column } from '../../components/ui';
 
 const ALL_ROLES: Role[] = ['union_admin', 'registrar', 'school_admin', 'coach', 'manager', 'scorer'];
 const SCHOOL_INVITABLE: Role[] = ['coach', 'manager', 'scorer'];
@@ -32,7 +32,12 @@ export default function UsersPage() {
   const [role, setRole] = useState<Role>('coach');
   const [schoolId, setSchoolId] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [schoolError, setSchoolError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
+  useFocusFirstInvalid(tick);
   const [toggle, setToggle] = useState<AppUser | null>(null);
   const [revoke, setRevoke] = useState<Invite | null>(null);
 
@@ -42,24 +47,31 @@ export default function UsersPage() {
   const schoolOptional = isUnionAdmin && role === 'scorer';
   const showSchool = isUnionAdmin && (needsSchool || schoolOptional);
 
-  const reset = () => { setEmail(''); setRole('coach'); setSchoolId(''); setError(null); };
+  const reset = () => { setEmail(''); setRole('coach'); setSchoolId(''); setError(null); setSchoolError(null); setEmailError(null); };
 
   const invite = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSchoolError(null);
+    setEmailError(null);
     const addr = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) { setEmailError('Enter the full email address, for example name@school.co.zw.'); setTick((n) => n + 1); return; }
     const sid = isUnionAdmin ? (showSchool ? schoolId || null : null) : mySchool;
-    if (needsSchool && !sid) { setError('Choose a school for this role.'); return; }
+    if (needsSchool && !sid) { setSchoolError('Choose a school for this role.'); setTick((n) => n + 1); return; }
+    if (users.data.some((u) => u.email.toLowerCase() === addr)) { setEmailError(`${addr} already has an account.`); setTick((n) => n + 1); return; }
     setBusy(true);
     try {
-      await setDoc(doc(db, 'invites', addr), {
+      const outcome = await confirmWrite(setDoc(doc(db, 'invites', addr), {
         email: addr, role, schoolId: sid, invitedBy: appUser.uid, createdAt: serverTimestamp(),
-      });
-      await writeAudit('user.invited', 'invite', addr, `${ROLE_LABELS[role]}${sid ? ` at ${byId[sid]?.name ?? sid}` : ''}`);
-      toast.success(`Invitation saved. Ask ${addr} to sign up with this address.`);
+      }), () => toast.error(`The invitation for ${addr} could not be saved.`));
+      void writeAudit('user.invited', 'invite', addr, `${ROLE_LABELS[role]}${sid ? ` at ${byId[sid]?.name ?? sid}` : ''}`);
+      toast.success(savedText(`Invitation saved. Ask ${addr} to sign up with this address.`, outcome));
       setOpen(false); reset();
-    } catch {
-      setError('Could not save the invitation. One may already exist for this email: revoke it first, then invite again.');
+    } catch (err) {
+      const code = typeof err === 'object' && err && 'code' in err ? String((err as { code: unknown }).code) : '';
+      setError(code === 'permission-denied'
+        ? 'Could not save the invitation. One may already exist for this email: revoke it first, then invite again.'
+        : friendlyError(err, 'Could not save the invitation. Try again.'));
     } finally {
       setBusy(false);
     }
@@ -69,12 +81,12 @@ export default function UsersPage() {
     if (!toggle) return;
     setBusy(true);
     try {
-      await updateDoc(doc(db, 'users', toggle.uid), { active: !toggle.active });
-      await writeAudit(toggle.active ? 'user.deactivated' : 'user.reactivated', 'user', toggle.uid, toggle.email);
-      toast.success(toggle.active ? 'User deactivated.' : 'User reactivated.');
+      const outcome = await confirmWrite(updateDoc(doc(db, 'users', toggle.uid), { active: !toggle.active }));
+      void writeAudit(toggle.active ? 'user.deactivated' : 'user.reactivated', 'user', toggle.uid, toggle.email);
+      toast.success(savedText(toggle.active ? 'User deactivated.' : 'User reactivated.', outcome));
       setToggle(null);
-    } catch {
-      toast.error('Could not update this user.');
+    } catch (err) {
+      toast.error(friendlyError(err, 'Could not update this user.'));
     } finally {
       setBusy(false);
     }
@@ -84,18 +96,20 @@ export default function UsersPage() {
     if (!revoke) return;
     setBusy(true);
     try {
-      await deleteDoc(doc(db, 'invites', revoke.email));
-      await writeAudit('user.invite_revoked', 'invite', revoke.email);
-      toast.success('Invitation revoked.');
+      const outcome = await confirmWrite(deleteDoc(doc(db, 'invites', revoke.email)));
+      void writeAudit('user.invite_revoked', 'invite', revoke.email);
+      toast.success(savedText('Invitation revoked.', outcome));
       setRevoke(null);
-    } catch {
-      toast.error('Could not revoke the invitation.');
+    } catch (err) {
+      toast.error(friendlyError(err, 'Could not revoke the invitation.'));
     } finally {
       setBusy(false);
     }
   };
 
   const canToggle = (u: AppUser) => u.uid !== appUser.uid && (isUnionAdmin || u.role !== 'school_admin');
+  const q = search.trim().toLowerCase();
+  const shownUsers = q ? users.data.filter((u) => `${u.displayName} ${u.email}`.toLowerCase().includes(q)) : users.data;
   const schoolName = (id: string | null) => (id ? byId[id]?.name ?? id : 'All schools');
 
   const userCols: Column<AppUser>[] = [
@@ -103,13 +117,13 @@ export default function UsersPage() {
     { key: 'role', header: 'Role', cell: (u) => ROLE_LABELS[u.role] },
     { key: 'school', header: 'School', cell: (u) => schoolName(u.schoolId) },
     { key: 'status', header: 'Status', cell: (u) => <Badge tone={u.active ? 'green' : 'red'}>{u.active ? 'Active' : 'Deactivated'}</Badge> },
-    { key: 'act', header: '', cell: (u) => canToggle(u) ? <Button size="sm" variant="secondary" onClick={() => setToggle(u)}>{u.active ? 'Deactivate' : 'Reactivate'}</Button> : null },
+    { key: 'act', header: '', cell: (u) => canToggle(u) ? <Button size="sm" variant="secondary" aria-label={`${u.active ? 'Deactivate' : 'Reactivate'} ${u.displayName}`} onClick={() => setToggle(u)}>{u.active ? 'Deactivate' : 'Reactivate'}</Button> : null },
   ];
   const inviteCols: Column<Invite>[] = [
     { key: 'email', header: 'Email', primary: true, cell: (i) => i.email },
     { key: 'role', header: 'Role', cell: (i) => ROLE_LABELS[i.role] },
     { key: 'school', header: 'School', cell: (i) => schoolName(i.schoolId) },
-    { key: 'act', header: '', cell: (i) => <Button size="sm" variant="secondary" onClick={() => setRevoke(i)}>Revoke</Button> },
+    { key: 'act', header: '', cell: (i) => <Button size="sm" variant="secondary" aria-label={`Revoke invitation for ${i.email}`} onClick={() => setRevoke(i)}>Revoke</Button> },
   ];
 
   return (
@@ -118,18 +132,20 @@ export default function UsersPage() {
         actions={<Button icon={<Plus className="size-4" />} onClick={() => { reset(); setOpen(true); }}>Invite user</Button>} />
       <h2 className="mb-2 text-xl">Pending invitations</h2>
       <div className="mb-8">
-        <DataList items={invites.data} columns={inviteCols} rowKey={(i) => i.email} loading={invites.loading} error={invites.error}
-          empty={<p className="rounded-xl border border-dashed border-line bg-white p-4 text-sm text-ink-soft">No pending invitations.</p>} />
+        <DataList items={invites.data} columns={inviteCols} rowKey={(i) => i.email} loading={invites.loading} error={invites.error} onRetry={invites.retry}
+          empty={<p className="rounded-xl border border-dashed border-line bg-white p-4 text-sm text-ink-soft">No pending invitations. Use Invite user to add someone.</p>} />
       </div>
-      <h2 className="mb-2 text-xl">Active accounts</h2>
-      <DataList items={users.data} columns={userCols} rowKey={(u) => u.uid} loading={users.loading} error={users.error} />
+      <h2 className="mb-2 text-xl">Accounts</h2>
+      {users.data.length > 6 && <div className="mb-3 max-w-sm"><Input label="Search accounts" type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Name or email" /></div>}
+      <DataList items={shownUsers} columns={userCols} rowKey={(u) => u.uid} loading={users.loading} error={users.error} onRetry={users.retry}
+        empty={<p className="rounded-xl border border-dashed border-line bg-white p-4 text-sm text-ink-soft">{search ? 'No accounts match that search.' : 'No accounts yet. People appear here once they sign up from an invitation.'}</p>} />
 
       <Modal open={open} onClose={() => setOpen(false)} title="Invite a user">
-        <form onSubmit={invite} className="flex flex-col gap-4">
-          <Input label="Email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <form onSubmit={invite} noValidate className="flex flex-col gap-4">
+          <Input label="Email" type="email" required autoComplete="off" autoCapitalize="none" spellCheck={false} value={email} error={emailError} onChange={(e) => { setEmail(e.target.value); setEmailError(null); }} />
           <Select label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)} options={roles.map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />
           {showSchool && (
-            <Select label="School" required={needsSchool} value={schoolId} onChange={(e) => setSchoolId(e.target.value)}
+            <Select label="School" required={needsSchool} value={schoolId} error={schoolError} onChange={(e) => { setSchoolId(e.target.value); setSchoolError(null); }}
               placeholder={schoolOptional ? 'All schools' : 'Choose a school'} options={schools.map((s) => ({ value: s.id, label: s.name }))} />
           )}
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
