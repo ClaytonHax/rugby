@@ -1,5 +1,5 @@
-import { EmptyState } from '../../components/ui';
+import { PeopleList } from '../../components/people/PeopleList';
 
 export default function StaffPage() {
-  return <EmptyState title="Staff" />;
+  return <PeopleList kind="staff" />;
 }

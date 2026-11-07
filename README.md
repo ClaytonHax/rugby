@@ -1,32 +1,52 @@
-# React + TypeScript + Vite
+# Tryline
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Player registration and match administration for Zimbabwean high school rugby. Schools register players and staff, union staff verify them, teams build sheets, and results feed the public fixtures, results and standings.
 
-Currently, two official plugins are available:
+Tryline is an independent product. It is not affiliated with or endorsed by any union or school.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+**Live:** https://tryline-zw.vercel.app
 
-## React Compiler
+## Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+React 19, TypeScript, Vite, react-router-dom, Tailwind CSS v4, lucide-react, Firebase Auth and Firestore. There is no custom backend and no Firebase Storage.
 
-## Expanding the Oxlint configuration
+## Local development
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+1. `npm install`
+2. Copy `.env.example` to `.env.local` and fill in the `VITE_FIREBASE_*` values for the Firebase web app. Never commit `.env.local`.
+3. `npm run dev`
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+Other scripts: `npm run build` (type-check and production build), `npm run lint`.
+
+## Tests
+
+`npm run test:rules` runs the Firestore security rules tests against the local emulator. It needs the Firebase CLI and Java. It uses the `demo-tryline` project id and never touches the live project.
+
+## Roles
+
+- **Union administrator:** everything, including invites, settings and corrections to final results.
+- **Registrar:** verifies, rejects and suspends players and staff, and approves team sheets.
+- **School administrator:** runs one school, manages its teams and invites its coaches, managers and scorers.
+- **Coach and manager:** register players and staff at their school, build squads and team sheets, and record results.
+- **Scorer:** records match events for an assigned school, or all schools if none is set.
+- **Public:** fixtures, results, standings, school directory and match pages. No personal data.
+
+Access is by invitation only. An admin creates an invite for an email address, and the invitee signs up and verifies that email.
+
+## Data privacy
+
+- Player and staff records contain personal data about minors, so the database is default-deny. Public pages show only school, team and match data, and on scoring events only an initial and surname.
+- Identity documents and photos are stored as chunks in Firestore (`documents/{id}` with `chunks/{i}`), each under 900 KiB. Images are compressed in the browser before upload.
+- Firestore's free tier gives roughly 1 GiB of storage, which is the practical capacity limit for documents. Firebase Storage is not used because it needs a billed bucket, and keeping documents in the same database keeps access controlled by the same rules.
+- Document bytes are never placed in public paths, logs or URLs other than short-lived object URLs shown to authorised users.
+- No secrets belong in this public repository. Firebase web config values are read from environment variables. Service account keys, tokens and private keys must never be committed.
+
+## Deploying rules
+
+From the project root, with the Firebase CLI logged in to the right account:
+
+```sh
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Run `npm run test:rules` first. The rules are in `firestore.rules`.

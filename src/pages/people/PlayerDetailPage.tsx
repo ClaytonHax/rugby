@@ -1,5 +1,7 @@
-import { EmptyState } from '../../components/ui';
+import { useParams } from 'react-router-dom';
+import { PersonDetail } from '../../components/people/PersonDetail';
 
 export default function PlayerDetailPage() {
-  return <EmptyState title="Player" />;
+  const { id = '' } = useParams();
+  return <PersonDetail kind="player" id={id} />;
 }

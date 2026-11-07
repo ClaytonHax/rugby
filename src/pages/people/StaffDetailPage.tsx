@@ -1,5 +1,7 @@
-import { EmptyState } from '../../components/ui';
+import { useParams } from 'react-router-dom';
+import { PersonDetail } from '../../components/people/PersonDetail';
 
 export default function StaffDetailPage() {
-  return <EmptyState title="Staff member" />;
+  const { id = '' } = useParams();
+  return <PersonDetail kind="staff" id={id} />;
 }

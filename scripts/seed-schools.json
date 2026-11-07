@@ -1,0 +1,16 @@
+[
+  { "id": "prince-edward-school", "name": "Prince Edward School", "town": "Harare", "province": "Harare" },
+  { "id": "st-georges-college", "name": "St George's College", "town": "Harare", "province": "Harare" },
+  { "id": "falcon-college", "name": "Falcon College", "town": "Esigodini", "province": "Matabeleland South" },
+  { "id": "peterhouse", "name": "Peterhouse", "town": "Marondera", "province": "Mashonaland East" },
+  { "id": "plumtree-school", "name": "Plumtree School", "town": "Plumtree", "province": "Matabeleland South" },
+  { "id": "churchill-school", "name": "Churchill School", "town": "Harare", "province": "Harare" },
+  { "id": "milton-high-school", "name": "Milton High School", "town": "Bulawayo", "province": "Bulawayo" },
+  { "id": "lomagundi-college", "name": "Lomagundi College", "town": "Chinhoyi", "province": "Mashonaland West" },
+  { "id": "st-johns-college-harare", "name": "St John's College", "town": "Harare", "province": "Harare" },
+  { "id": "hellenic-academy", "name": "Hellenic Academy", "town": "Harare", "province": "Harare" },
+  { "id": "gateway-high-school", "name": "Gateway High School", "town": "Harare", "province": "Harare" },
+  { "id": "cbc-bulawayo", "name": "CBC Bulawayo", "town": "Bulawayo", "province": "Bulawayo" },
+  { "id": "chaplin-high-school", "name": "Chaplin High School", "town": "Gweru", "province": "Midlands" },
+  { "id": "mutare-boys-high-school", "name": "Mutare Boys' High School", "town": "Mutare", "province": "Manicaland" }
+]

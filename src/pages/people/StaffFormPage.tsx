@@ -1,5 +1,6 @@
-import { EmptyState } from '../../components/ui';
+import { RegistrationForm } from '../../components/people/RegistrationForm';
 
+/** /app/staff/new registers a staff member; /app/staff/new?id=<staffId> resumes or edits one. */
 export default function StaffFormPage() {
-  return <EmptyState title="Register staff" />;
+  return <RegistrationForm kind="staff" />;
 }

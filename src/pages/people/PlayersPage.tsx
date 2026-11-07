@@ -1,5 +1,5 @@
-import { EmptyState } from '../../components/ui';
+import { PeopleList } from '../../components/people/PeopleList';
 
 export default function PlayersPage() {
-  return <EmptyState title="Players" />;
+  return <PeopleList kind="player" />;
 }
