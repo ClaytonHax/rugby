@@ -29,7 +29,7 @@ export function useFocusFirstInvalid(tick: number): void {
 export function Field({ label, htmlFor, error, hint, required, children, className = '' }: FieldProps) {
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      <label htmlFor={htmlFor} className="text-sm font-medium text-ink">
+      <label htmlFor={htmlFor} className="text-xs font-bold uppercase tracking-wide text-ink-soft">
         {label}{required && <span className="text-danger" aria-hidden> *</span>}
       </label>
       {children}
@@ -39,7 +39,7 @@ export function Field({ label, htmlFor, error, hint, required, children, classNa
   );
 }
 
-const control = 'w-full min-h-11 rounded-lg border bg-white px-3 text-base text-ink placeholder:text-ink-mute focus-visible:border-pitch disabled:bg-chalk disabled:text-ink-soft';
+const control = 'w-full min-h-11 rounded-md border bg-white px-3 text-base text-ink placeholder:text-ink-mute focus-visible:border-pitch disabled:bg-chalk disabled:text-ink-soft';
 const ok = 'border-line';
 const bad = 'border-danger';
 

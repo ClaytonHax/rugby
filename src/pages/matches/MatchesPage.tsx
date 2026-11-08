@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CalendarDays, Plus } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useMatchesByStatus } from '../../lib/useMatches';
 import { useSessionState } from '../../lib/useSessionState';
-import { MatchCard } from '../../components/MatchCard';
+import { MatchRow } from '../../components/scores';
 import { EmptyState, ErrorState, LinkButton, PageHeader, Select, SkeletonList, Tabs } from '../../components/ui';
 import { AGE_GROUPS, type MatchStatus } from '../../lib/types';
 
@@ -17,6 +17,12 @@ export default function MatchesPage() {
   const matches = useMatchesByStatus(STATUS[tab], tab === 'upcoming' ? 'asc' : 'desc');
   const canCreate = appUser && appUser.role !== 'scorer' && appUser.role !== undefined;
   const list = age ? matches.data.filter((m) => m.ageGroup === age) : matches.data;
+
+  const groups = useMemo(() => {
+    const g = new Map<string, typeof list>();
+    for (const m of list) g.set(m.competition, [...(g.get(m.competition) ?? []), m]);
+    return [...g.entries()];
+  }, [list]);
 
   return (
     <div>
@@ -37,8 +43,13 @@ export default function MatchesPage() {
               description={tab === 'upcoming' && canCreate ? 'Schedule a match to start building team sheets.' : undefined}
               action={tab === 'upcoming' && canCreate ? <LinkButton to="/app/matches/new">New match</LinkButton> : undefined} />
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {list.map((m) => <MatchCard key={m.id} match={m} to={`/app/matches/${m.id}`} />)}
+            <div className="overflow-hidden rounded-xl bg-white shadow-sm">
+              {groups.map(([comp, rows]) => (
+                <section key={comp} aria-label={comp}>
+                  <h2 className="flex min-h-10 items-center bg-band px-3 font-sans text-xs font-bold uppercase tracking-wider text-pitch">{comp}</h2>
+                  {rows.map((m) => <MatchRow key={m.id} match={m} to={`/app/matches/${m.id}`} showDate />)}
+                </section>
+              ))}
             </div>
           )}
       </div>

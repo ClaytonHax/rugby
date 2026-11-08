@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { MapPin } from 'lucide-react';
 import type { Match } from '../lib/types';
 import { Badge } from './ui';
+import { TeamCrest } from './scores/TeamCrest';
 
 /** "Sat, 7 Nov 2026" from a YYYY-MM-DD string. Every date in the app is shown this way (en-GB). */
 export function formatDate(iso: string, weekday = true): string {
@@ -13,17 +14,17 @@ export function formatDate(iso: string, weekday = true): string {
 export function MatchCard({ match, to }: { match: Match; to?: string }) {
   const showScore = match.status === 'final' || match.status === 'live';
   return (
-    <Link to={to ?? `/matches/${match.id}`} className="block rounded-xl border border-line bg-white p-4 hover:border-pitch">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft">
+    <Link to={to ?? `/matches/${match.id}`} className="block rounded-xl bg-white p-4 shadow-sm hover:bg-pitch-50/60">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
         <span>{match.ageGroup} · {match.competition}</span>
-        {match.status === 'live' && <Badge tone="red">Live</Badge>}
+        {match.status === 'live' && <span className="rounded-full bg-live px-2.5 py-0.5 text-xs font-bold text-white">Live</span>}
         {match.status === 'final' && <Badge>Full time</Badge>}
         {match.status === 'cancelled' && <Badge tone="amber">Cancelled</Badge>}
       </div>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <span className="min-w-0 break-words text-right font-semibold">{match.homeName}</span>
+        <span className="flex min-w-0 items-center justify-end gap-2 text-right font-semibold"><span className="min-w-0 break-words">{match.homeName}</span><TeamCrest name={match.homeName} size="md" /></span>
         <span className="num min-w-20 text-center text-3xl">{showScore ? `${match.homeScore} - ${match.awayScore}` : 'v'}</span>
-        <span className="min-w-0 break-words font-semibold">{match.awayName}</span>
+        <span className="flex min-w-0 items-center gap-2 font-semibold"><TeamCrest name={match.awayName} size="md" /><span className="min-w-0 break-words">{match.awayName}</span></span>
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 text-xs text-ink-soft">
         <span>{formatDate(match.date)} · {match.kickoff}</span>

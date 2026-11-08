@@ -522,7 +522,8 @@ test('Tryline end-to-end story', async ({ browser }) => {
     await page.getByRole('dialog').getByRole('button', { name: 'Mark final' }).click();
     await expect(page.getByText('Full time').first()).toBeVisible();
     await expect(page.getByRole('button', { name: /^Try \+5/ }).first()).toBeDisabled();
-    expect(await readDoc(`matches/${matchId}`)).toMatchObject({ status: 'final', homeScore: 10, awayScore: 0 });
+    // The screen updates from the local write, so wait for the server to have it.
+    await expect.poll(() => readDoc(`matches/${matchId}`)).toMatchObject({ status: 'final', homeScore: 10, awayScore: 0 });
 
     // School can no longer edit
     const cp = coach.page;
@@ -570,7 +571,7 @@ test('Tryline end-to-end story', async ({ browser }) => {
     await p.getByLabel('Season').selectOption(MATCH_YEAR);
     const rowA = p.locator('tbody tr').filter({ hasText: 'School A U16A' });
     await expect(rowA).toBeVisible();
-    const cells = async (r: typeof rowA) => (await r.locator('td').allInnerTexts()).map((t) => t.trim());
+    const cells = async (r: typeof rowA) => (await r.locator('td').allInnerTexts()).map((t) => t.trim()).slice(0, 10); // the Form column after these is hidden on phones
     expect(await cells(rowA)).toEqual(['1', 'School A U16A', '1', '1', '0', '0', '10', '0', '10', '4']);
     expect(await cells(p.locator('tbody tr').filter({ hasText: 'School B U16A' }))).toEqual(['2', 'School B U16A', '1', '0', '0', '1', '0', '10', '-10', '0']);
     // the log table must be fully readable on a phone (no clipped columns inside its own scroller)

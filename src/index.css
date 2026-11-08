@@ -13,6 +13,11 @@
   --color-gold-hover: #c9921c;
   --color-ink-mute: #5f6f69;
   --color-danger: #B3261E;
+  --color-night: #062A20;
+  --color-night-2: #0A3A2C;
+  --color-surface: #EDEFEC;
+  --color-band: #E4EFEA;
+  --color-live: #D9153B;
   --color-status-draft: #6b7280;
   --color-status-pending: #b7791f;
   --color-status-verified: #1b7f4b;
@@ -25,7 +30,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  background: var(--color-chalk);
+  background: var(--color-surface);
   color: var(--color-ink);
   font-family: var(--font-sans);
   overflow-x: hidden;
@@ -40,3 +45,6 @@ main:focus { outline: none; }
   *, ::before, ::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

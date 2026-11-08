@@ -1,6 +1,6 @@
 import type { KeyboardEvent } from 'react';
 
-/** Segmented tabs. Pair with a panel: <div role="tabpanel" id={`${idBase}-panel`} aria-labelledby={`${idBase}-${value}`}>. */
+/** Underlined tabs. Pair with a panel: <div role="tabpanel" id={`${idBase}-panel`} aria-labelledby={`${idBase}-${value}`}>. */
 export function Tabs<K extends string>({ idBase, label, tabs, value, onChange, fill = false }: {
   idBase: string; label: string; tabs: ReadonlyArray<{ key: K; label: string }>; value: K; onChange: (key: K) => void; fill?: boolean;
 }) {
@@ -13,11 +13,11 @@ export function Tabs<K extends string>({ idBase, label, tabs, value, onChange, f
     document.getElementById(`${idBase}-${next}`)?.focus();
   }
   return (
-    <div role="tablist" aria-label={label} className="mb-4 flex gap-2">
+    <div role="tablist" aria-label={label} className="no-scrollbar mb-4 flex gap-1 overflow-x-auto border-b border-line">
       {tabs.map((t, i) => (
         <button key={t.key} type="button" role="tab" id={`${idBase}-${t.key}`} aria-selected={value === t.key} aria-controls={`${idBase}-panel`}
           tabIndex={value === t.key ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => onKey(e, i)}
-          className={`min-h-11 rounded-lg px-4 text-sm font-semibold ${fill ? 'flex-1' : ''} ${value === t.key ? 'bg-pitch text-white' : 'border border-line bg-white hover:bg-chalk'}`}>
+          className={`-mb-px min-h-11 shrink-0 border-b-[3px] px-4 text-sm font-bold uppercase tracking-wide ${fill ? 'flex-1' : ''} ${value === t.key ? 'border-gold text-ink' : 'border-transparent text-ink-soft hover:text-ink'}`}>
           {t.label}
         </button>
       ))}

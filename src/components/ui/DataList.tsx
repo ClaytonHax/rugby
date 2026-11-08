@@ -34,18 +34,18 @@ export function DataList<T>({ items, columns, rowKey, rowHref, loading, error, o
   const actions = columns.filter((c) => c !== primary && c.header === '');
   return (
     <>
-      <div className="hidden overflow-x-auto rounded-xl border border-line bg-white md:block">
+      <div className="hidden overflow-x-auto rounded-xl border border-line/70 bg-white shadow-sm md:block">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-line bg-chalk text-xs uppercase tracking-wide text-ink-soft">
-            <tr>{columns.map((c) => <th key={c.key} scope="col" className={`px-4 py-3 font-semibold ${c.className ?? ''}`}>{c.header || <span className="sr-only">Actions</span>}</th>)}</tr>
+          <thead className="border-b border-line bg-band text-[11px] uppercase tracking-wider text-pitch">
+            <tr>{columns.map((c) => <th key={c.key} scope="col" className={`px-3 py-2 font-bold ${c.className ?? ''}`}>{c.header || <span className="sr-only">Actions</span>}</th>)}</tr>
           </thead>
           <tbody>
             {items.map((row) => (
               <tr key={rowKey(row)}
                 onClick={rowHref ? (e) => { if (!(e.target as HTMLElement).closest('a,button')) navigate(rowHref(row)); } : undefined}
-                className={`border-b border-line last:border-0 ${rowHref ? 'cursor-pointer hover:bg-chalk' : ''}`}>
+                className={`border-b border-line/70 last:border-0 ${rowHref ? 'cursor-pointer hover:bg-pitch-50/60' : ''}`}>
                 {columns.map((c) => (
-                  <td key={c.key} className={`px-4 py-3 ${c.className ?? ''}`}>
+                  <td key={c.key} className={`px-3 py-2 ${c.className ?? ''}`}>
                     {rowHref && c === primary ? <Link to={rowHref(row)} className="font-semibold text-pitch hover:underline">{c.cell(row)}</Link> : c.cell(row)}
                   </td>
                 ))}
@@ -54,7 +54,7 @@ export function DataList<T>({ items, columns, rowKey, rowHref, loading, error, o
           </tbody>
         </table>
       </div>
-      <ul className="flex flex-col gap-3 md:hidden">
+      <ul className="flex flex-col gap-2 md:hidden">
         {items.map((row) => {
           const body = (
             <>
@@ -63,7 +63,7 @@ export function DataList<T>({ items, columns, rowKey, rowHref, loading, error, o
                 <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
                   {rest.map((c) => (
                     <div key={c.key} className="min-w-0">
-                      <dt className="text-xs text-ink-soft">{c.header}</dt>
+                      <dt className="text-[11px] font-bold uppercase tracking-wider text-ink-soft">{c.header}</dt>
                       <dd className="break-words">{c.cell(row)}</dd>
                     </div>
                   ))}
@@ -74,9 +74,9 @@ export function DataList<T>({ items, columns, rowKey, rowHref, loading, error, o
           return (
             <li key={rowKey(row)}>
               {rowHref ? (
-                <Link to={rowHref(row)} className="block rounded-xl border border-line bg-white p-4 active:bg-chalk">{body}</Link>
+                <Link to={rowHref(row)} className="block rounded-xl border border-line/70 bg-white p-3 shadow-sm active:bg-chalk">{body}</Link>
               ) : (
-                <div className="rounded-xl border border-line bg-white p-4">
+                <div className="rounded-xl border border-line/70 bg-white p-3 shadow-sm">
                   {body}
                   {actions.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{actions.map((c) => <div key={c.key}>{c.cell(row)}</div>)}</div>}
                 </div>

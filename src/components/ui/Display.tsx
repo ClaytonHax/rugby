@@ -5,7 +5,7 @@ import { Button } from './Button';
 import type { RecordStatus } from '../../lib/types';
 
 export function Card({ children, className = '', padded = true }: { children: ReactNode; className?: string; padded?: boolean }) {
-  return <div className={`rounded-xl border border-line bg-white ${padded ? 'p-4 md:p-5' : ''} ${className}`}>{children}</div>;
+  return <div className={`rounded-xl border border-line/70 bg-white shadow-sm ${padded ? 'p-4 md:p-5' : ''} ${className}`}>{children}</div>;
 }
 
 export type BadgeTone = 'neutral' | 'green' | 'amber' | 'red' | 'gold' | 'darkred';
@@ -18,7 +18,7 @@ const tones: Record<BadgeTone, string> = {
   darkred: 'bg-red-200 text-red-950',
 };
 export function Badge({ tone = 'neutral', children, className = '' }: { tone?: BadgeTone; children: ReactNode; className?: string }) {
-  return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${tones[tone]} ${className}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${tones[tone]} ${className}`}>{children}</span>;
 }
 
 const statusMap: Record<RecordStatus, { tone: BadgeTone; label: string }> = {
@@ -38,7 +38,7 @@ export function EmptyState({ title, description, action, icon, page = false }: {
   const Heading = page ? 'h1' : 'h2';
   useDocumentTitle(page ? title : null);
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-line bg-white px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-line bg-white shadow-sm px-6 py-10 text-center">
       {icon && <div className="text-pitch" aria-hidden>{icon}</div>}
       <Heading className="text-xl text-ink">{title}</Heading>
       {description && <p className="max-w-md text-sm text-ink-soft">{description}</p>}
@@ -83,14 +83,14 @@ export function PageHeader({ title, subtitle, actions, backTo, backLabel = 'Back
 }) {
   useDocumentTitle(documentTitle ?? title);
   return (
-    <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <header className="mb-4 flex flex-wrap items-end justify-between gap-3 border-l-4 border-gold pl-3">
       <div className="min-w-0">
         {backTo && (
           <Link to={backTo} className="mb-1 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-pitch hover:underline">
             <ArrowLeft className="size-4" aria-hidden /> {backLabel}
           </Link>
         )}
-        <h1 className="text-3xl leading-tight text-ink md:text-4xl">{title}</h1>
+        <h1 className="text-3xl uppercase leading-tight tracking-wide text-ink md:text-4xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-ink-soft">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

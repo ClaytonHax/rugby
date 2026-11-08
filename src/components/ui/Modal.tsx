@@ -55,9 +55,9 @@ export function Modal({ open, onClose, title, children, footer, focusFirstField 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center overscroll-contain bg-ink/60 sm:items-center sm:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId}
-        className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl focus-visible:outline-none sm:rounded-2xl">
-        <div className="flex items-center justify-between gap-2 border-b border-line py-2 pl-5 pr-2">
-          <h2 id={titleId} className="min-w-0 text-2xl">{title}</h2>
+        className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-xl focus-visible:outline-none sm:rounded-xl">
+        <div className="flex items-center justify-between gap-2 rounded-t-2xl border-b-2 border-gold bg-band py-1 pl-5 pr-2 sm:rounded-t-xl">
+          <h2 id={titleId} className="min-w-0 text-2xl uppercase tracking-wide">{title}</h2>
           <Button variant="ghost" size="sm" className="min-w-11 shrink-0" onClick={onClose} aria-label="Close"><X className="size-5" aria-hidden /></Button>
         </div>
         <div className="overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
